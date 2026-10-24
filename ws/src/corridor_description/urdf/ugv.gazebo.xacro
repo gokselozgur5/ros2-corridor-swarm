@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- Gazebo Harmonic sensors on the UGV mounts. Included by ugv.urdf.xacro when sim:=true.
+       Topic names are gz-side; corridor_gz/config/bridge.yaml maps them to ROS. -->
+  <xacro:macro name="ugv_gazebo" params="prefix ns">
+    <gazebo reference="${prefix}lidar_link">
+      <sensor name="lidar" type="gpu_lidar">
+        <topic>${ns}/scan</topic>
+        <gz_frame_id>${prefix}lidar_link</gz_frame_id>
+        <update_rate>10</update_rate>
+        <lidar>
+          <scan><horizontal><samples>720</samples><min_angle>-3.1416</min_angle><max_angle>3.1416</max_angle></horizontal></scan>
+          <range><min>0.3</min><max>40.0</max><resolution>0.01</resolution></range>
+          <noise><type>gaussian</type><mean>0</mean><stddev>0.01</stddev></noise>
+        </lidar>
+        <always_on>true</always_on>
+        <visualize>false</visualize>
+      </sensor>
+    </gazebo>
+    <gazebo reference="${prefix}camera_link">
+      <sensor name="camera" type="camera">
+        <topic>${ns}/camera/image</topic>
+        <gz_frame_id>${prefix}camera_link</gz_frame_id>
+        <update_rate>10</update_rate>
+        <camera>
+          <horizontal_fov>1.396</horizontal_fov>
+          <image><width>640</width><height>480</height><format>R8G8B8</format></image>
+          <clip><near>0.1</near><far>100</far></clip>
+          <camera_info_topic>${ns}/camera/camera_info</camera_info_topic>
+        </camera>
+        <always_on>true</always_on>
+      </sensor>
+    </gazebo>
+    <gazebo reference="${prefix}imu_link">
+      <sensor name="imu" type="imu">
+        <topic>${ns}/imu</topic>
+        <gz_frame_id>${prefix}imu_link</gz_frame_id>
+        <update_rate>100</update_rate>
+        <always_on>true</always_on>
+      </sensor>
+    </gazebo>
+    <gazebo reference="${prefix}gnss_link">
+      <sensor name="navsat" type="navsat">
+        <topic>${ns}/navsat</topic>
+        <gz_frame_id>${prefix}gnss_link</gz_frame_id>
+        <update_rate>5</update_rate>
+        <always_on>true</always_on>
+      </sensor>
+    </gazebo>
+    <gazebo>
+      <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
+        <odom_frame>${ns}/odom</odom_frame>
+        <robot_base_frame>${prefix}base_footprint</robot_base_frame>
+        <odom_topic>${ns}/odom</odom_topic>
+        <tf_topic>${ns}/tf</tf_topic>
+        <odom_publish_frequency>50</odom_publish_frequency>
+      </plugin>
+      <plugin filename="gz-sim-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher">
+        <topic>${ns}/joint_states</topic>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+</robot>
