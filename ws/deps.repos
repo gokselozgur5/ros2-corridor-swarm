@@ -1,0 +1,9 @@
+repositories:
+  foxglove_bridge:
+    type: git
+    url: https://github.com/foxglove/ros-foxglove-bridge.git
+    version: 0.8.5
+  rosx_introspection:
+    type: git
+    url: https://github.com/facontidavide/rosx_introspection.git
+    version: main
