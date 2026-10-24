@@ -2,3 +2,5 @@ ws/build/
 ws/install/
 ws/log/
 __pycache__/
+ws/src/foxglove_bridge/
+ws/src/rosx_introspection/
