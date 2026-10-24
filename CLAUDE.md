@@ -14,7 +14,7 @@ One-week ROS 2 Jazzy project, fully simulated. The plan is in README.md. Göksel
 
 1. `git init` here; commit after every step with the command you ran and its output in the message body.
 2. `ws/src/` plus `env.sh`.
-3. foxglove_bridge from source: `git clone -b ros2 https://github.com/foxglove/ros-foxglove-bridge.git ws/src/foxglove_bridge`, resolve its dependencies (rosdep if initialised, else the apt packages it names), `colcon build --packages-select foxglove_bridge`.
+3. foxglove_bridge from source: `git clone https://github.com/foxglove/ros-foxglove-bridge.git ws/src/foxglove_bridge` (branch main), resolve its dependencies (rosdep if initialised, else the apt packages it names), `colcon build --packages-select foxglove_bridge`.
 4. Package `corridor_sim` (ament_python) with a `vehicle_sim` node: one vehicle moving along a hard-coded 3-waypoint route near 52 N, 2 W at 20 m/s, publishing `sensor_msgs/NavSatFix`, `nav_msgs/Odometry` and a `map -> base_link` tf at 10 Hz. Parameters for speed and the route.
 5. `launch/day1.launch.py` starting foxglove_bridge (port 8765, address 0.0.0.0) and vehicle_sim.
 6. Prove it: `ros2 topic hz /vehicle/fix`, one `ros2 topic echo --once`, `ss -ltnp | grep 8765`. Leave the launch running in tmux window `run` so Göksel can connect Foxglove from his Mac to `ws://192.168.88.229:8765`.
