@@ -10,6 +10,10 @@
   <depend>std_msgs</depend>
   <depend>diagnostic_msgs</depend>
   <depend>corridor_msgs</depend>
+  <depend>corridor_nav</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
   <exec_depend>python3-anthropic-pip</exec_depend>
   <test_depend>python3-pytest</test_depend>
   <export>
