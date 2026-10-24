@@ -159,3 +159,7 @@ repositories:
     type: git
     url: https://github.com/ros/diagnostics.git
     version: ros2-jazzy
+  tl-expected:
+    type: git
+    url: https://github.com/TartanLlama/expected.git
+    version: master
