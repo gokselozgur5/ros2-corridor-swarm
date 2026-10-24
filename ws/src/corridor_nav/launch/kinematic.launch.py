@@ -1,23 +1,43 @@
-"""Autonomy layer on the kinematic unicycle, no Gazebo. One vehicle v1 inside the demo corridor."""
+"""Autonomy layer on kinematic unicycles, no Gazebo. `n` vehicles v1..vn inside the demo corridor,
+each with a follower and a patrol server; one geofence monitor for all (issue #10)."""
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def launch_setup(context):
+    share = get_package_share_directory('corridor_nav')
+    corridor = LaunchConfiguration('corridor').perform(context)
+    n = int(LaunchConfiguration('n').perform(context))
+    lookahead = float(LaunchConfiguration('lookahead_m').perform(context))
+    speed = float(LaunchConfiguration('speed_mps').perform(context))
+    names = [f'v{i}' for i in range(1, n + 1)]
+    nodes = []
+    for i, v in enumerate(names):
+        nodes += [
+            Node(package='corridor_sim', executable='unicycle_sim', namespace=v, name='unicycle_sim',
+                 parameters=[{'origin_lat': 52.7000, 'origin_lon': -3.0000,
+                              'start_x': 20.0 + 25.0 * i, 'start_y': 20.0, 'child_frame_id': f'{v}/base_link'}]),
+            Node(package='corridor_nav', executable='waypoint_follower', namespace=v, name='waypoint_follower',
+                 parameters=[{'speed_mps': speed, 'lookahead_m': lookahead, 'arrive_tolerance_m': 1.5}]),
+            Node(package='corridor_nav', executable='patrol_server', namespace=v, name='patrol_server',
+                 parameters=[{'corridor_geojson': corridor, 'vehicle': v, 'inset_m': 30.0 + 8.0 * i}]),
+        ]
+    nodes.append(Node(package='corridor_nav', executable='geofence_monitor', name='geofence_monitor',
+                      parameters=[{'corridor_geojson': corridor, 'vehicles': names, 'warn_margin_m': 15.0}]))
+    return nodes
+
+
 def generate_launch_description():
     share = get_package_share_directory('corridor_nav')
-    corridor = LaunchConfiguration('corridor')
     return LaunchDescription([
         DeclareLaunchArgument('corridor', default_value=os.path.join(share, 'config', 'corridor_demo.geojson')),
-        Node(package='corridor_sim', executable='unicycle_sim', namespace='v1', name='unicycle_sim',
-             parameters=[{'origin_lat': 52.7000, 'origin_lon': -3.0000, 'start_x': 20.0, 'start_y': 20.0,
-                          'child_frame_id': 'v1/base_link'}]),
-        Node(package='corridor_nav', executable='waypoint_follower', namespace='v1', name='waypoint_follower',
-             parameters=[{'speed_mps': 3.0, 'lookahead_m': 3.0, 'arrive_tolerance_m': 1.5}]),
-        Node(package='corridor_nav', executable='geofence_monitor', name='geofence_monitor',
-             parameters=[{'corridor_geojson': corridor, 'vehicles': ['v1'], 'warn_margin_m': 15.0}]),
+        DeclareLaunchArgument('n', default_value='1'),
+        DeclareLaunchArgument('lookahead_m', default_value='3.0'),
+        DeclareLaunchArgument('speed_mps', default_value='3.0'),
+        OpaqueFunction(function=launch_setup),
     ])
