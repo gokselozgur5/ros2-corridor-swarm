@@ -4,6 +4,10 @@ Phases, not days. Each step has a proof: a command whose output decides whether 
 
 Tracked on GitHub as milestones (one per phase) and issues (one per step).
 
+## Progress
+
+2026-10-24: Phase 1 (#1-#5) and Phase 2 (#6-#10) proven, see the closed issues for the proof outputs. Phase 3 is written; #12 and #13 are proven on the debug path (`steps/08_proofs.sh 12`, `steps/10_scene_proof.sh`), the model path runs with `steps/11_live_model_proof.sh` once `ANTHROPIC_API_KEY` is in `.env`. Found on the way: #19, the Gazebo backend's odom frame is not the map frame the patrol route uses (`steps/12_gazebo_patrol.sh` shows it); decided in the architecture review (ARCHITECTURE.md, open questions).
+
 ## Phase 0: kinematic baseline (done, 2026-10-24)
 
 - Workspace, `env.sh`, `foxglove_bridge` 0.8.5 from source, `vehicle_sim` node.
