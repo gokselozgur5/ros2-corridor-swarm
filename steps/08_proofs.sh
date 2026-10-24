@@ -83,7 +83,7 @@ if [[ $which == 12 || $which == all ]]; then
   cleanup
   ros2 launch corridor_nav kinematic.launch.py > /tmp/kin12.log 2>&1 &
   sleep 6
-  ros2 launch corridor_planner mission.launch.py dry_run:=true > /tmp/mission12.log 2>&1 &
+  ros2 launch corridor_planner mission.launch.py dry_run:=true start_patrol:=false > /tmp/mission12.log 2>&1 &
   sleep 6
   timeout 30 ros2 topic echo /mission/llm_trace --field data > /tmp/trace12.txt 2>/dev/null &
   sleep 2
