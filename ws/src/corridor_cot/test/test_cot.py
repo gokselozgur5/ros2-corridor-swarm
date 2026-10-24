@@ -9,7 +9,7 @@ def test_pli_event_shape():
     xml = pli_event('v1', 'V1', 52.7, -3.0, course_deg=90.0, speed_mps=3.0, now=now)
     ev = ET.fromstring(xml)
     assert ev.get('uid') == 'v1' and ev.get('type') == 'a-f-G-E-V-C'
-    assert ev.get('time') == '2026-10-24T15:00:00.00Z' and ev.get('stale') == '2026-10-24T15:01:00.00Z'
+    assert ev.get('time') == '2026-10-24T15:00:00.000Z' and ev.get('stale') == '2026-10-24T15:01:00.000Z'
     pt = ev.find('point')
     assert pt.get('lat') == '52.7000000' and pt.get('lon') == '-3.0000000'
     assert ev.find('detail/contact').get('callsign') == 'V1'
