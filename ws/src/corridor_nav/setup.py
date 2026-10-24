@@ -27,6 +27,7 @@ setup(
             'send_path = corridor_nav.send_path:main',
             'patrol_server = corridor_nav.patrol_server:main',
             'twist_stamper = corridor_nav.twist_stamper:main',
+            'wasd = corridor_nav.wasd:main',
         ],
     },
 )
