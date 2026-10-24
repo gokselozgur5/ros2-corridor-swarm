@@ -20,7 +20,6 @@
     enable_odom_tf: true
     publish_rate: 50.0
     cmd_vel_timeout: 0.5
-    use_stamped_vel: false
     linear.x.max_velocity: 4.0
     linear.x.min_velocity: -2.0
     linear.x.max_acceleration: 2.0
