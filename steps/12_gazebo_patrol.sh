@@ -1,4 +1,5 @@
-#!/usr/bin/env bash
+d=$(grep -o "distance_m: [0-9.]*" /tmp/goal_gz.txt | tail -1 | awk '{print $2}')
+grep -q "result: done" /tmp/goal_gz.txt && awk -v d="$d" 'BEGIN{exit !(d>380)}' && echo "GAZEBO PATROL PASS" || echo "GAZEBO PATROL FAIL (distance ${d:-none} m, a lap is about 480 m)"#!/usr/bin/env bash
 # End to end on physics: Gazebo + ros2_control diff_drive + follower + patrol action, one lap. Not a PLAN proof, a sanity run.
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
