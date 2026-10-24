@@ -29,7 +29,7 @@ Why these choices:
 
 ## Status
 
-Phase 1: Gazebo world with live lidar/camera/imu/navsat on the UGV (#1-#4 closed); ros2_control build in progress (#5). Phase 2: follower, geofence, patrol action, three vehicles proven on the kinematic sim (#6-#10 closed). Phase 3: planner tools proven over the debug topic; model proofs wait for ANTHROPIC_API_KEY in `.env` (#11-#14 open). See PLAN.md and the issues.
+Phase 1 closed: Gazebo world, live lidar/camera/imu/navsat, ros2_control diff_drive moving the UGV (#1-#5). Phase 2 closed on the kinematic sim: follower, geofence, patrol action, three vehicles (#6-#10). Phase 3: planner tools proven over the debug topic; the model path waits for ANTHROPIC_API_KEY in `.env` (#11-#14 open). See PLAN.md and the issues.
 
 ## Local settings
 
