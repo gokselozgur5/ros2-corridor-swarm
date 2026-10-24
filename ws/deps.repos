@@ -71,3 +71,23 @@ repositories:
     type: git
     url: https://github.com/gazebo-release/gz_sim_vendor.git
     version: jazzy
+  actuator_msgs:
+    type: git
+    url: https://github.com/rudislabs/actuator_msgs.git
+    version: main
+  gps_umd:
+    type: git
+    url: https://github.com/swri-robotics/gps_umd.git
+    version: ros2-devel
+  marine_msgs:
+    type: git
+    url: https://github.com/apl-ocean-engineering/marine_msgs.git
+    version: ros2
+  vision_msgs:
+    type: git
+    url: https://github.com/ros-perception/vision_msgs.git
+    version: jazzy
+  simulation_interfaces:
+    type: git
+    url: https://github.com/ros-simulation/simulation_interfaces.git
+    version: jazzy
