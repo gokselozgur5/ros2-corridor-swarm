@@ -7,10 +7,11 @@ cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
 vcs import ws/src < ws/deps.repos
 export GZ_VERSION=harmonic
+sudo apt-get install -y -q libcli11-dev libgflags-dev
 echo "--- rosdep simulate (must list no ros-jazzy-* package)"
 rosdep install --from-paths ws/src/ros_gz --ignore-src -y --simulate || true
 cd ws
-colcon build --symlink-install --packages-up-to ros_gz_bridge ros_gz_sim ros_gz_interfaces \
+colcon build --symlink-install --packages-up-to ros_gz_bridge ros_gz_sim \
   --cmake-args -DBUILD_TESTING=OFF -DGZ_VERSION=harmonic
 echo "exit=$?"
 echo "=== $(date -Is) done"
