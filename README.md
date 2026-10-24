@@ -45,3 +45,7 @@ Hosts, users and keys are not in the repo. Copy `.env.example` to `.env`, fill i
 | `mission.launch.py` | corridor_planner | `corridor`, `dry_run` (false), `status_loop` (false), `start_patrol` (true) | patrol_server for v1, mission_planner (Opus), optional status_loop (Haiku) |
 
 Tools: `send_path` (one Path from `points:=[x,y,...]`), `cot_bridge` (`vehicles`, `host`, `port` 8087, `period_s`). Proof scripts in `steps/`: `08_proofs.sh <issue>`, `10_scene_proof.sh`, `11_live_model_proof.sh` (needs the key), `12_gazebo_patrol.sh`, `13_cot_proof.sh`, `14_marker_proof.sh`.
+
+## Foxglove
+
+Both launch files start `foxglove_bridge` on port 8765 (`foxglove:=false` to skip). On the Mac: Foxglove, Open connection, `ws://$THOR_HOST:8765`, then Layout, Import from file, `foxglove/corridor.json`: fleet map on the fixes, v1 3D view with lidar and camera, cross-track and speed plot, follower status, geofence events, a publish panel for `/mission/request` with the planner's reply and trace next to it.
