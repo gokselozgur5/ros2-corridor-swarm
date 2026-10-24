@@ -51,12 +51,7 @@
       <gazebo>
         <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
           <parameters>$(arg controllers_yaml)</parameters>
-          <ros>
-            <namespace>/${ns}</namespace>
-            <remapping>/${ns}/diff_drive/cmd_vel_unstamped:=/${ns}/cmd_vel</remapping>
-            <remapping>/${ns}/diff_drive/odom:=/${ns}/odom</remapping>
-            <remapping>/${ns}/diff_drive/tf_odometry:=/${ns}/tf</remapping>
-          </ros>
+          <ros><namespace>/${ns}</namespace></ros>
         </plugin>
       </gazebo>
     </xacro:if>
