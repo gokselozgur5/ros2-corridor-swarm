@@ -20,6 +20,7 @@ setup(
     entry_points={
         'console_scripts': [
             'mission_planner = corridor_planner.mission_planner:main',
+            'status_loop = corridor_planner.status_loop:main',
         ],
     },
 )
