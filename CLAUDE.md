@@ -14,6 +14,7 @@ ROS 2 Jazzy project, fully simulated. Architecture in ARCHITECTURE.md, plan with
 
 - Git: canonical repo is GitHub `origin`, branch `main`. Thor's checkout and the Mac mirror both push there.
 - A step is done when its proof in PLAN.md passes from a clean `colcon build`. Commit after every proven step with the proof command and its output in the body. Close the issue with the same output.
+- Commits are small: one logical change each, even one file. A doc change, an ignore rule, a config line, a function are separate commits. A step is normally several commits.
 - A new test must be seen red with the fix reverted before it counts.
 - Claude API: `claude-opus-5-5` for planning, `claude-haiku-5-5` for the status loop, both with `fallbacks: "default"` under beta `server-side-fallback-2026-07-01`. Check `stop_reason` before reading `content`. The key comes from `ANTHROPIC_API_KEY` in the shell, never from the repo.
 - Steps run as scripts in `steps/` from the tmux session `ros2` (windows `work` and `run`); logs in `~/deletdis/log/`.
