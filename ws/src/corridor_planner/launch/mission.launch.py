@@ -19,7 +19,9 @@ def generate_launch_description():
         DeclareLaunchArgument('corridor', default_value=default_corridor),
         DeclareLaunchArgument('dry_run', default_value='false'),
         DeclareLaunchArgument('status_loop', default_value='false'),
+        DeclareLaunchArgument('start_patrol', default_value='true'),   # false when the vehicle layer already runs one
         Node(package='corridor_nav', executable='patrol_server', namespace='v1', name='patrol_server',
+             condition=IfCondition(LaunchConfiguration('start_patrol')),
              parameters=[{'corridor_geojson': corridor, 'vehicle': 'v1', 'inset_m': 30.0}]),
         Node(package='corridor_planner', executable='mission_planner', name='mission_planner', output='screen',
              parameters=[{'corridor_geojson': corridor, 'vehicles': ['v1'], 'dry_run': dry_run}]),
