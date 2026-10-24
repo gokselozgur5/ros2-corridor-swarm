@@ -171,3 +171,7 @@ repositories:
     type: git
     url: https://github.com/ros/sdformat_urdf.git
     version: jazzy
+  foxglove_msgs:
+    type: git
+    url: https://github.com/foxglove/ros_foxglove_msgs.git
+    version: main
