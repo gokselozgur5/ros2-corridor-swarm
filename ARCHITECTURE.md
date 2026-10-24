@@ -87,3 +87,13 @@ External, cloned into `ws/src` via `ws/deps.repos` and built with colcon: `ros_g
 - **Physics first, Nav2 later.** The point is motors and sensors behaving like hardware; a pure-pursuit follower is 150 lines and keeps the stack buildable.
 - **Claude plans, ROS executes.** The LLM is an operator with a radio, not a controller in the loop. Tick-rate decisions stay in ROS.
 - **Keep `vehicle_sim`.** Day 1's kinematic node remains the smoke test when Gazebo is not available.
+
+## Open questions (2026-10-24, after the first build-out)
+
+Things the first day showed; to be decided together before Phase 4.
+
+1. **Odometry ownership.** Three sources exist: `unicycle_sim`, the gz `OdometryPublisher`, `diff_drive`. They are switched with xacro `if/unless` and launch conditions. Cleaner: one vehicle-layer contract (`/vN/odom`, `/vN/fix`, `/vN/cmd_vel`, `/tf`) and one launch file per backend (kinematic, gz-plugin, ros2_control) with no conditionals inside the model.
+2. **Who cancels on a geofence breach.** `geofence_monitor` publishes an empty `Path` to the follower; `patrol_server` notices through the follower status and its own event subscription. Two paths to the same effect. Better: the monitor cancels the active action at the mission layer, and only the mission layer talks to the follower.
+3. **`/fleet/state` is in the diagram and nobody publishes it.** `mission_planner` and `status_loop` each subscribe to every vehicle and summarise it themselves. A `fleet_state` node should publish `FleetState` and both should read that.
+4. **`goto` publishes a Path.** The planner's rule is "only action goals, never low-level topics"; a Path is low-level. `goto` should be an action like `patrol`.
+5. **Nav2 stays out.** The ros_gz and ros2_control source builds (17 vendor packages, DART and OGRE-Next from source, 42 control packages) confirm that the underlay cannot absorb Nav2 cheaply. Pure pursuit is enough for a corridor with few obstacles; obstacle avoidance from the lidar, if wanted, is a small local planner in `corridor_nav`, not Nav2.
