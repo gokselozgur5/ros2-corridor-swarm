@@ -28,6 +28,8 @@ setup(
             'patrol_server = corridor_nav.patrol_server:main',
             'twist_stamper = corridor_nav.twist_stamper:main',
             'wasd = corridor_nav.wasd:main',
+            'map_overlay = corridor_nav.map_overlay:main',
+            'clicked_goal = corridor_nav.clicked_goal:main',
         ],
     },
 )
