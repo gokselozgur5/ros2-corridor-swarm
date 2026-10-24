@@ -25,6 +25,7 @@ setup(
             'waypoint_follower = corridor_nav.waypoint_follower:main',
             'geofence_monitor = corridor_nav.geofence_monitor:main',
             'send_path = corridor_nav.send_path:main',
+            'patrol_server = corridor_nav.patrol_server:main',
         ],
     },
 )
