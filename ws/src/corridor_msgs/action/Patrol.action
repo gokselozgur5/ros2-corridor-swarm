@@ -1,0 +1,15 @@
+# Drive laps along the corridor polygon.
+string vehicle        # v1, v2, ...
+string corridor_id
+uint32 laps           # 0 = until cancelled
+float32 speed_mps     # 0 = vehicle default
+bool clockwise
+---
+uint32 laps_done
+float64 distance_m
+string result         # done | cancelled | geofence | error
+---
+uint32 lap
+float32 lap_progress  # 0..1
+float64 distance_m
+geometry_msgs/Point next_waypoint   # map frame
