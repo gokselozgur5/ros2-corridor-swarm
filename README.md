@@ -16,7 +16,7 @@ rosdep install --from-paths ws/src --ignore-src -y --simulate   # must list no r
 cd ws && colcon build --symlink-install --packages-up-to foxglove_bridge corridor_sim --cmake-args -DBUILD_TESTING=OFF
 ```
 
-Run: `ros2 launch corridor_sim day1.launch.py`. Mac: Foxglove app, Open connection, `ws://192.168.88.229:8765`; a Map panel on `/vehicle/fix`.
+Run: `ros2 launch corridor_sim day1.launch.py`. Mac: Foxglove app, Open connection, `ws://$THOR_HOST:8765`; a Map panel on `/vehicle/fix`.
 
 Why these choices:
 
@@ -30,3 +30,7 @@ Why these choices:
 ## Status
 
 Phase 0 (kinematic baseline: workspace, foxglove_bridge, `vehicle_sim`, Foxglove from the Mac) done. Phase 1 (Gazebo world, physical vehicle) next. See PLAN.md.
+
+## Local settings
+
+Hosts, users and keys are not in the repo. Copy `.env.example` to `.env`, fill it, and `. ./.env` before `env.sh`. `.env` is gitignored.
