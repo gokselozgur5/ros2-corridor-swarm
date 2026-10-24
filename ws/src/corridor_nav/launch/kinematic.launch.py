@@ -17,7 +17,7 @@ def generate_launch_description():
              parameters=[{'origin_lat': 52.7000, 'origin_lon': -3.0000, 'start_x': 20.0, 'start_y': 20.0,
                           'child_frame_id': 'v1/base_link'}]),
         Node(package='corridor_nav', executable='waypoint_follower', namespace='v1', name='waypoint_follower',
-             parameters=[{'speed_mps': 3.0, 'lookahead_m': 5.0, 'arrive_tolerance_m': 1.5}]),
+             parameters=[{'speed_mps': 3.0, 'lookahead_m': 3.0, 'arrive_tolerance_m': 1.5}]),
         Node(package='corridor_nav', executable='geofence_monitor', name='geofence_monitor',
              parameters=[{'corridor_geojson': corridor, 'vehicles': ['v1'], 'warn_margin_m': 15.0}]),
     ])
