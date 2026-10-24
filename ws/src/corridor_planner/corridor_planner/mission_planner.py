@@ -72,6 +72,8 @@ class MissionPlanner(Node):
         self.trace_pub = self.create_publisher(String, '/mission/llm_trace', 50)
         self.diag_pub = self.create_publisher(DiagnosticArray, '/diagnostics', 10)
         self.create_subscription(String, '/mission/request', self.on_request, 10, callback_group=cb)
+        # Debug path that skips the model: {"name": "patrol", "input": {...}} runs the tool and publishes its result on the trace.
+        self.create_subscription(String, '/mission/tool_call', self.on_tool_call, 10, callback_group=cb)
 
         tools = {'list_vehicles': self.t_list, 'get_vehicle': self.t_get, 'patrol': self.t_patrol,
                  'goto': self.t_goto, 'stop': self.t_stop, 'geofence_events': self.t_events}
@@ -179,6 +181,18 @@ class MissionPlanner(Node):
         return out
 
     # ----- request handling ------------------------------------------------------------------
+    def on_tool_call(self, msg):
+        call = {}
+        try:
+            call = json.loads(msg.data)
+            result, is_error = self.tools[call['name']](**call.get('input', {})), False
+        except Exception as exc:
+            result, is_error = {'error': f'{type(exc).__name__}: {exc}'}, True
+        ev = {'event': 'tool', 'name': call.get('name'), 'input': call.get('input'),
+              'result': result, 'is_error': is_error, 'source': 'debug'}
+        self.trace_pub.publish(String(data=json.dumps(ev, default=str)))
+        self.get_logger().info(f'debug tool call: {ev}')
+
     def on_request(self, msg):
         if not self.busy.acquire(blocking=False):
             self.reply('busy with the previous request')
