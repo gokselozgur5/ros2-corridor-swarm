@@ -53,9 +53,7 @@ if [[ $which == 9 || $which == all ]]; then
   echo "--- #9 patrol action: one lap"
   cleanup
   ros2 launch corridor_nav kinematic.launch.py > /tmp/kin9.log 2>&1 &
-  sleep 4
-  ros2 run corridor_nav patrol_server --ros-args -r __ns:=/v1 -p "corridor_geojson:=$(ros2 pkg prefix corridor_nav)/share/corridor_nav/config/corridor_demo.geojson" -p vehicle:=v1 -p inset_m:=30.0 > /tmp/patrol9.log 2>&1 &
-  sleep 3
+  sleep 6
   timeout 400 ros2 action send_goal --feedback /v1/patrol corridor_msgs/action/Patrol "{vehicle: v1, corridor_id: demo, laps: 1, speed_mps: 0.0, clockwise: false}" > /tmp/goal9.txt 2>&1
   grep -c "lap_progress" /tmp/goal9.txt | sed 's/^/feedback messages: /'
   grep -A4 "^Result" /tmp/goal9.txt
