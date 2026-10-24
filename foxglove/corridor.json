@@ -1,7 +1,7 @@
 {
   "configById": {
     "map!fleet": {
-      "topicColors": {"/v1/fix": "#ff8c00", "/v2/fix": "#00bfff", "/v3/fix": "#7cfc00"},
+      "topicColors": {"/v1/fix": "#ff8c00", "/v2/fix": "#00bfff", "/v3/fix": "#7cfc00", "/map/overlay": "#ff3b30"},
       "zoomLevel": 15,
       "followTopic": "/v1/fix",
       "layer": "map",
@@ -13,7 +13,9 @@
       "followMode": "follow-pose",
       "followTf": "v1/base_footprint",
       "scene": {"enableStats": false, "transforms": {"showLabel": true}},
+      "publish": {"type": "point", "poseTopic": "/goal_pose", "pointTopic": "/clicked_point", "poseEstimateTopic": "/initialpose"},
       "topics": {
+        "/map/markers": {"visible": true},
         "/v1/scan": {"visible": true, "pointSize": 3, "colorField": "intensity", "colorMode": "flat", "flatColor": "#ff8c00"},
         "/v1/camera/image": {"visible": true, "distance": 1}
       },
