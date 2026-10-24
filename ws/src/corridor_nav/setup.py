@@ -11,6 +11,7 @@ setup(
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', glob('launch/*.launch.py')),
+        ('share/' + package_name + '/config', glob('config/*.geojson')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -23,6 +24,7 @@ setup(
         'console_scripts': [
             'waypoint_follower = corridor_nav.waypoint_follower:main',
             'geofence_monitor = corridor_nav.geofence_monitor:main',
+            'send_path = corridor_nav.send_path:main',
         ],
     },
 )
