@@ -5,3 +5,4 @@ __pycache__/
 ws/src/foxglove_bridge/
 ws/src/rosx_introspection/
 .env
+ws/src/ros_gz/
