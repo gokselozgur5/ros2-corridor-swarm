@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Phase 1/2 proofs after steps/07_build_ours.sh. Each block prints PROOF <issue> PASS|FAIL.
-# Usage: ./steps/08_proofs.sh [3|4|7|8|9|all]
+# Usage: ./steps/08_proofs.sh [3|4|7|8|9|10|12|all]
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
 LOG=~/deletdis/log/08_proofs.log; exec > >(tee -a "$LOG") 2>&1
@@ -96,17 +96,6 @@ if [[ $which == 12 || $which == all ]]; then
   grep -q "accepted.: True" /tmp/trace12.txt && grep -q "'mode': 'patrol'" /tmp/trace12.txt && echo "PROOF 12 PASS (debug path; the model path needs ANTHROPIC_API_KEY)" || { echo "PROOF 12 FAIL"; tail -5 /tmp/mission12.log; }
   pkill -f "mission.launch" 2>/dev/null; pkill -f "corridor_planner/lib" 2>/dev/null; cleanup
 fi
-
-#!/usr/bin/env bash
-# Phase 1/2 proofs after steps/07_build_ours.sh. Each block prints PROOF <issue> PASS|FAIL.
-# Usage: ./steps/08_proofs.sh [3|4|7|8|9|all]
-cd ~/deletdis/ros2-corridor-swarm
-source ./env.sh
-LOG=~/deletdis/log/08_proofs.log; exec > >(tee -a "$LOG") 2>&1
-which=${1:-all}
-echo "=== $(date -Is) proofs: $which"
-
-cleanup() { pkill -f "ros2 launch corridor" 2>/dev/null; pkill -f "corridor_nav/lib" 2>/dev/null; pkill -f "corridor_sim/lib" 2>/dev/null; pkill -f "corridor_gz" 2>/dev/null; pkill -f "gz sim -s" 2>/dev/null; pkill -f parameter_bridge 2>/dev/null; pkill -f robot_state_publisher 2>/dev/null; pkill -f "ros_gz_sim/create|ros_gz_sim create" 2>/dev/null; pkill -f "ros2 topic echo" 2>/dev/null; rm -f /tmp/status7.txt /tmp/status8.txt /tmp/xte7.txt /tmp/gf8.txt; sleep 1; }
 
 if [[ $which == 4 || $which == all ]]; then
   echo "--- #4 Gazebo world, v1 spawned, sensor topics under sim time"
