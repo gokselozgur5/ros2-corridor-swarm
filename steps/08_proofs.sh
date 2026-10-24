@@ -61,6 +61,53 @@ if [[ $which == 9 || $which == all ]]; then
   cleanup
 fi
 
+if [[ $which == 10 || $which == all ]]; then
+  echo "--- #10 three kinematic vehicles patrolling at once"
+  cleanup
+  ros2 launch corridor_nav kinematic.launch.py n:=3 > /tmp/kin10.log 2>&1 &
+  sleep 8
+  for v in v1 v2 v3; do ros2 action send_goal /$v/patrol corridor_msgs/action/Patrol "{vehicle: $v, corridor_id: demo, laps: 0, speed_mps: 0.0, clockwise: false}" > /tmp/goal10_$v.txt 2>&1 & done
+  sleep 12
+  pass=yes
+  for v in v1 v2 v3; do
+    r=$(timeout 6 ros2 topic hz /$v/odom 2>&1 | grep -m1 "average rate" | awk '{print $3}')
+    sp=$(timeout 3 ros2 topic echo --once /$v/odom --field twist.twist.linear.x 2>/dev/null)
+    echo "$v: odom ${r:-none} Hz, speed ${sp:-none} m/s"; [[ -z $r || -z $sp ]] && pass=no; awk -v s="$sp" 'BEGIN{exit !(s>1.0)}' || pass=no
+  done
+  [[ $pass == yes ]] && echo "PROOF 10 PASS" || echo "PROOF 10 FAIL"
+  pkill -f "action send_goal" 2>/dev/null; cleanup
+fi
+
+if [[ $which == 12 || $which == all ]]; then
+  echo "--- #12 planner tools wired to ROS (debug path, no model): patrol v1 through /mission/tool_call"
+  cleanup
+  ros2 launch corridor_nav kinematic.launch.py > /tmp/kin12.log 2>&1 &
+  sleep 6
+  ros2 launch corridor_planner mission.launch.py dry_run:=true > /tmp/mission12.log 2>&1 &
+  sleep 6
+  timeout 30 ros2 topic echo /mission/llm_trace --field data > /tmp/trace12.txt 2>/dev/null &
+  sleep 2
+  ros2 topic pub --once /mission/tool_call std_msgs/String "{data: '{\"name\": \"patrol\", \"input\": {\"vehicle\": \"v1\", \"laps\": 1, \"clockwise\": false}}'}" > /dev/null 2>&1
+  sleep 4
+  ros2 topic pub --once /mission/tool_call std_msgs/String "{data: '{\"name\": \"list_vehicles\", \"input\": {}}'}" > /dev/null 2>&1
+  sleep 3
+  grep -o "accepted.: True[^}]*" /tmp/trace12.txt | head -2
+  grep -o "'mode': '[a-z]*'" /tmp/trace12.txt | tail -1
+  grep -q "accepted.: True" /tmp/trace12.txt && grep -q "'mode': 'patrol'" /tmp/trace12.txt && echo "PROOF 12 PASS (debug path; the model path needs ANTHROPIC_API_KEY)" || { echo "PROOF 12 FAIL"; tail -5 /tmp/mission12.log; }
+  pkill -f "mission.launch" 2>/dev/null; pkill -f "corridor_planner/lib" 2>/dev/null; cleanup
+fi
+
+#!/usr/bin/env bash
+# Phase 1/2 proofs after steps/07_build_ours.sh. Each block prints PROOF <issue> PASS|FAIL.
+# Usage: ./steps/08_proofs.sh [3|4|7|8|9|all]
+cd ~/deletdis/ros2-corridor-swarm
+source ./env.sh
+LOG=~/deletdis/log/08_proofs.log; exec > >(tee -a "$LOG") 2>&1
+which=${1:-all}
+echo "=== $(date -Is) proofs: $which"
+
+cleanup() { pkill -f "ros2 launch corridor" 2>/dev/null; pkill -f "corridor_nav/lib" 2>/dev/null; pkill -f "corridor_sim/lib" 2>/dev/null; pkill -f "corridor_gz" 2>/dev/null; pkill -f "gz sim -s" 2>/dev/null; pkill -f parameter_bridge 2>/dev/null; pkill -f robot_state_publisher 2>/dev/null; pkill -f "ros_gz_sim/create|ros_gz_sim create" 2>/dev/null; pkill -f "ros2 topic echo" 2>/dev/null; rm -f /tmp/status7.txt /tmp/status8.txt /tmp/xte7.txt /tmp/gf8.txt; sleep 1; }
+
 if [[ $which == 4 || $which == all ]]; then
   echo "--- #4 Gazebo world, v1 spawned, sensor topics under sim time"
   cleanup
