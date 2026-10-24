@@ -6,7 +6,7 @@ echo "=== $(date -Is) start"
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
 vcs import ws/src < ws/deps.repos
-python3 -m pip install --user -q anthropic 2>&1 | tail -1 || true
+python3 -m pip install --user --break-system-packages -q anthropic 2>&1 | grep -v WARNING || true
 cd ws
 colcon build --symlink-install --packages-up-to xacro corridor_sim corridor_nav corridor_description corridor_gz corridor_planner \
   --cmake-args -DBUILD_TESTING=OFF
