@@ -23,7 +23,7 @@ if [[ $which == 7 || $which == all ]]; then
   timeout 200 ros2 topic echo /v1/follower/cross_track --field data > /tmp/xte7.txt 2>/dev/null &
   timeout 200 ros2 topic echo /v1/follower/status --field data > /tmp/status7.txt 2>/dev/null &
   sleep 2
-  ros2 run corridor_nav send_path --ros-args -r __ns:=/v1 -p "points:=[20.0,20.0,80.0,20.0,80.0,80.0,20.0,80.0]" 2>&1 | grep -o "sent.*|no subscriber.*"
+  ros2 run corridor_nav send_path --ros-args -r __ns:=/v1 -p "points:=[20.0,20.0,80.0,20.0,80.0,80.0,20.0,80.0]" 2>&1 | grep -oE "sent.*|no subscriber.*"
   for i in $(seq 1 200); do grep -q arrived /tmp/status7.txt 2>/dev/null && break; sleep 1; done; s=$(grep -v -- --- /tmp/status7.txt 2>/dev/null | tail -1)
   echo "status after ${i}s: ${s:-unknown}"
   awk 'function abs(v){return v<0?-v:v} {if(abs($1)>m)m=abs($1); n++} END{printf "cross-track samples=%d max_abs=%.2f m\n", n, m; exit !(n>10 && m<1.0)}' /tmp/xte7.txt \
@@ -39,7 +39,7 @@ if [[ $which == 8 || $which == all ]]; then
   timeout 40 ros2 topic echo /fleet/geofence_events > /tmp/gf8.txt 2>/dev/null &
   timeout 60 ros2 topic echo /v1/follower/status --field data > /tmp/status8.txt 2>/dev/null &
   sleep 2
-  ros2 run corridor_nav send_path --ros-args -r __ns:=/v1 -p "points:=[20.0,20.0,20.0,-60.0]" 2>&1 | grep -o "sent.*|no subscriber.*"   # south, out of the box
+  ros2 run corridor_nav send_path --ros-args -r __ns:=/v1 -p "points:=[20.0,20.0,20.0,-60.0]" 2>&1 | grep -oE "sent.*|no subscriber.*"   # south, out of the box
   t0=$(date +%s.%N); ev=""
   for i in $(seq 1 60); do grep -q "type: 0" /tmp/gf8.txt 2>/dev/null && ev=yes && break; sleep 0.5; done
   sleep 1; s=$(grep -v -- --- /tmp/status8.txt 2>/dev/null | tail -1)
