@@ -66,7 +66,7 @@ class MissionPlanner(Node):
             self.path_pubs[v] = self.create_publisher(Path, f'/{v}/path', 10)
             self.patrol_clients[v] = ActionClient(self, Patrol, f'/{v}/patrol', callback_group=cb)
         self.events = collections.deque(maxlen=200)
-        self.create_subscription(GeofenceEvent, '/fleet/geofence_events', self.events.appendleft, 20, callback_group=cb)
+        self.create_subscription(GeofenceEvent, '/fleet/geofence_events', lambda e: self.events.appendleft(e), 20, callback_group=cb)
 
         self.reply_pub = self.create_publisher(String, '/mission/reply', 10)
         self.trace_pub = self.create_publisher(String, '/mission/llm_trace', 50)
