@@ -47,6 +47,14 @@
         <always_on>true</always_on>
       </sensor>
     </gazebo>
+    <xacro:if value="$(arg use_ros2_control)">
+      <gazebo>
+        <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+          <parameters>$(arg controllers_yaml)</parameters>
+          <ros><namespace>/${ns}</namespace></ros>
+        </plugin>
+      </gazebo>
+    </xacro:if>
     <gazebo>
       <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
         <odom_frame>${ns}/odom</odom_frame>

@@ -5,6 +5,7 @@
   <xacro:arg name="use_ros2_control" default="false"/>
   <xacro:arg name="sim" default="false"/>
   <xacro:arg name="ns" default="v1"/>
+  <xacro:arg name="controllers_yaml" default=""/>
   <xacro:property name="prefix" value="$(arg prefix)"/>
 
   <xacro:property name="body_l" value="1.20"/>
