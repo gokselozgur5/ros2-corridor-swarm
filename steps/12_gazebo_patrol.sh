@@ -1,5 +1,4 @@
-d=$(grep -o "distance_m: [0-9.]*" /tmp/goal_gz.txt | tail -1 | awk '{print $2}')
-grep -q "result: done" /tmp/goal_gz.txt && awk -v d="$d" 'BEGIN{exit !(d>380)}' && echo "GAZEBO PATROL PASS" || echo "GAZEBO PATROL FAIL (distance ${d:-none} m, a lap is about 480 m)"#!/usr/bin/env bash
+#!/usr/bin/env bash
 # End to end on physics: Gazebo + ros2_control diff_drive + follower + patrol action, one lap. Not a PLAN proof, a sanity run.
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
@@ -18,5 +17,6 @@ grep -c "lap_progress" /tmp/goal_gz.txt | sed 's/^/feedback messages: /'
 grep -A4 "^Result" /tmp/goal_gz.txt
 awk 'function abs(v){return v<0?-v:v} /^-?[0-9]/{if(abs($1)>m)m=abs($1); n++} END{printf "cross-track samples=%d max_abs=%.2f m\n", n, m}' /tmp/xte_gz.txt
 grep -q "result: done" /tmp/goal_gz.txt && echo "GAZEBO PATROL PASS" || echo "GAZEBO PATROL FAIL"
-cleanup
+d=$(grep -o "distance_m: [0-9.]*" /tmp/goal_gz.txt | tail -1 | awk '{print $2}')
+grep -q "result: done" /tmp/goal_gz.txt && awk -v d="$d" 'BEGIN{exit !(d>380)}' && echo "GAZEBO PATROL PASS" || echo "GAZEBO PATROL FAIL (distance ${d:-none} m, a lap is about 480 m)"
 echo "=== $(date -Is) done"
