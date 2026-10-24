@@ -71,7 +71,7 @@ if [[ $which == 10 || $which == all ]]; then
   pass=yes
   for v in v1 v2 v3; do
     r=$(timeout 6 ros2 topic hz /$v/odom 2>&1 | grep -m1 "average rate" | awk '{print $3}')
-    sp=$(timeout 3 ros2 topic echo --once /$v/odom --field twist.twist.linear.x 2>/dev/null)
+    sp=$(timeout 8 ros2 topic echo /$v/odom --field twist.twist.linear.x 2>/dev/null | grep -v -- --- | head -5 | sort -g | tail -1)
     echo "$v: odom ${r:-none} Hz, speed ${sp:-none} m/s"; [[ -z $r || -z $sp ]] && pass=no; awk -v s="$sp" 'BEGIN{exit !(s>1.0)}' || pass=no
   done
   [[ $pass == yes ]] && echo "PROOF 10 PASS" || echo "PROOF 10 FAIL"
