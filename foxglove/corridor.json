@@ -31,6 +31,7 @@
     "RawMessages!status": {"topicPath": "/v1/follower/status", "foxglovePanelTitle": "v1 status"},
     "RawMessages!geofence": {"topicPath": "/fleet/geofence_events", "foxglovePanelTitle": "geofence events"},
     "RawMessages!reply": {"topicPath": "/mission/reply", "foxglovePanelTitle": "planner reply"},
+    "Teleop!v1": {"topic": "/v1/cmd_vel", "publishRate": 10, "upButton": {"field": "linear-x", "value": 1.5}, "downButton": {"field": "linear-x", "value": -1.0}, "leftButton": {"field": "angular-z", "value": 1.0}, "rightButton": {"field": "angular-z", "value": -1.0}, "foxglovePanelTitle": "v1 teleop"},
     "Publish!request": {
       "topicName": "/mission/request", "datatype": "std_msgs/msg/String",
       "buttonText": "send request", "buttonColor": "#ff8c00",
@@ -55,7 +56,7 @@
       "second": {
         "direction": "column",
         "first": {"direction": "row", "first": "RawMessages!status", "second": "RawMessages!geofence"},
-        "second": {"direction": "row", "first": {"direction": "column", "first": "Publish!request", "second": "RawMessages!reply"}, "second": "RawMessages!trace"},
+        "second": {"direction": "row", "first": {"direction": "column", "first": {"direction": "row", "first": "Publish!request", "second": "Teleop!v1"}, "second": "RawMessages!reply"}, "second": "RawMessages!trace"},
         "splitPercentage": 35
       },
       "splitPercentage": 30
