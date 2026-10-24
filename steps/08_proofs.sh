@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Phase 1/2 proofs after steps/07_build_ours.sh. Each block prints PROOF <issue> PASS|FAIL.
-# Usage: ./steps/08_proofs.sh [3|4|7|8|9|10|12|all]
+# Usage: ./steps/08_proofs.sh [3|4|5|7|8|9|10|12|all]
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
 LOG=~/deletdis/log/08_proofs.log; exec > >(tee -a "$LOG") 2>&1
@@ -95,6 +95,23 @@ if [[ $which == 12 || $which == all ]]; then
   grep -o '"mode": "[a-z]*"' /tmp/trace12.txt | tail -1
   grep -q '"accepted": true' /tmp/trace12.txt && grep -q '"mode": "patrol"' /tmp/trace12.txt && echo "PROOF 12 PASS (debug path; the model path needs ANTHROPIC_API_KEY)" || { echo "PROOF 12 FAIL"; tail -5 /tmp/mission12.log; }
   pkill -f "mission.launch" 2>/dev/null; pkill -f "corridor_planner/lib" 2>/dev/null; cleanup
+fi
+
+if [[ $which == 5 || $which == all ]]; then
+  echo "--- #5 ros2_control diff_drive in Gazebo: cmd_vel 1.0 m/s for 5 s moves odom about 5 m, wheels report velocity"
+  cleanup
+  ros2 launch corridor_gz sim.launch.py use_ros2_control:=true > /tmp/sim5.log 2>&1 &
+  sleep 20
+  timeout 10 ros2 control list_controllers -c /v1/controller_manager 2>&1 | head -4
+  x0=$(timeout 5 ros2 topic echo --once /v1/odom --field pose.pose.position.x 2>/dev/null)
+  timeout 5 ros2 topic pub -r 20 /v1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 1.0}}" > /dev/null 2>&1
+  sleep 1
+  x1=$(timeout 5 ros2 topic echo --once /v1/odom --field pose.pose.position.x 2>/dev/null)
+  wv=$(timeout 5 ros2 topic echo --once /v1/joint_states --field velocity 2>/dev/null | tr -d '\n' | cut -c1-80)
+  echo "odom x: ${x0:-none} -> ${x1:-none}; wheel velocities: ${wv:-none}"
+  awk -v a="$x0" -v b="$x1" 'BEGIN{d=b-a; printf "moved %.2f m\n", d; exit !(d>3.5 && d<6.5)}' \
+    && echo "PROOF 5 PASS" || { echo "PROOF 5 FAIL"; grep -i "error\|died" /tmp/sim5.log | head -5; }
+  cleanup
 fi
 
 if [[ $which == 4 || $which == all ]]; then
