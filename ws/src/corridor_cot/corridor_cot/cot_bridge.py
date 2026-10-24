@@ -1,0 +1,105 @@
+"""CoT bridge (issue #16).
+
+Every vehicle's fix/odom -> one PLI event per `period_s` over TCP to the TAK server (FTS_HOST:8087,
+plain CoT, no TLS). Events from the server that are markers -> std_msgs/String on /mission/request
+("send the nearest vehicle to <callsign> at lat, lon"), so the planner can act on them. Reconnects on
+any socket error; never raises out of a callback."""
+import os
+import socket
+import threading
+
+import rclpy
+from nav_msgs.msg import Odometry
+from rclpy.node import Node
+from sensor_msgs.msg import NavSatFix
+from std_msgs.msg import String
+
+from corridor_cot.cot import course_from_quaternion, parse_marker, pli_event
+
+
+class CotBridge(Node):
+    def __init__(self):
+        super().__init__('cot_bridge')
+        self.declare_parameter('vehicles', ['v1'])
+        self.declare_parameter('host', os.environ.get('FTS_HOST', '127.0.0.1'))
+        self.declare_parameter('port', 8087)
+        self.declare_parameter('period_s', 2.0)
+        self.declare_parameter('team', 'Cyan')
+        self.state = {v: {} for v in self.get_parameter('vehicles').value}
+        for v in self.state:
+            self.create_subscription(NavSatFix, f'/{v}/fix', lambda m, v=v: self.state[v].update(lat=m.latitude, lon=m.longitude, hae=m.altitude), 10)
+            self.create_subscription(Odometry, f'/{v}/odom', lambda m, v=v: self.state[v].update(
+                course=course_from_quaternion(m.pose.pose.orientation.z, m.pose.pose.orientation.w),
+                speed=abs(m.twist.twist.linear.x)), 10)
+        self.request_pub = self.create_publisher(String, '/mission/request', 10)
+        self.sock = None
+        self.lock = threading.Lock()
+        self.create_timer(self.get_parameter('period_s').value, self.send_pli)
+        threading.Thread(target=self.reader, daemon=True).start()
+
+    def connect(self):
+        host, port = self.get_parameter('host').value, self.get_parameter('port').value
+        s = socket.create_connection((host, port), timeout=5.0)
+        s.settimeout(None)
+        self.get_logger().info(f'connected to TAK server {host}:{port}')
+        return s
+
+    def send_pli(self):
+        payload = ''
+        for v, st in self.state.items():
+            if 'lat' not in st:
+                continue
+            payload += pli_event(uid=f'corridor-{v}', callsign=v.upper(), lat=st['lat'], lon=st['lon'],
+                                 hae=st.get('hae', 0.0), course_deg=st.get('course', 0.0), speed_mps=st.get('speed', 0.0),
+                                 team=self.get_parameter('team').value)
+        if not payload:
+            return
+        with self.lock:
+            try:
+                if self.sock is None:
+                    self.sock = self.connect()
+                self.sock.sendall(payload.encode())
+            except OSError as exc:
+                self.get_logger().warn(f'TAK send failed: {exc}', throttle_duration_sec=10.0)
+                self.sock = None
+
+    def reader(self):
+        buf = b''
+        while rclpy.ok():
+            with self.lock:
+                s = self.sock
+            if s is None:
+                threading.Event().wait(1.0)
+                continue
+            try:
+                chunk = s.recv(65536)
+            except OSError:
+                chunk = b''
+            if not chunk:
+                with self.lock:
+                    self.sock = None
+                buf = b''
+                continue
+            buf += chunk
+            while b'</event>' in buf:
+                xml, buf = buf.split(b'</event>', 1)
+                start = xml.rfind(b'<event')
+                if start < 0:
+                    continue
+                marker = parse_marker(xml[start:].decode(errors='replace') + '</event>')
+                if marker and not marker['uid'].startswith('corridor-'):
+                    text = f"send the nearest vehicle to marker {marker['callsign'] or marker['uid']} at {marker['lat']:.6f}, {marker['lon']:.6f}"
+                    self.request_pub.publish(String(data=text))
+                    self.get_logger().info(f'marker -> request: {text}')
+
+
+def main():
+    rclpy.init()
+    node = CotBridge()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
