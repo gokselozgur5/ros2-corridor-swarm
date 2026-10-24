@@ -20,6 +20,7 @@ from std_msgs.msg import String
 from corridor_msgs.action import Patrol
 from corridor_msgs.msg import GeofenceEvent
 from corridor_nav.geofence import LocalFrame, load_geojson_polygon
+from corridor_nav.pure_pursuit import closest_segment
 
 
 def inset_polygon(poly, inset):
@@ -154,7 +155,8 @@ class PatrolServer(Node):
                 fb.lap = laps_done + 1
                 fb.lap_progress = float(min(1.0, (distance - laps_done * lap_len) / lap_len)) if lap_len else 0.0
                 fb.distance_m = distance
-                nxt = min(route, key=lambda p: -math.dist(p, last))  # placeholder farthest; refined below
+                seg, _ = closest_segment(last[0], last[1], route)
+                nxt = route[min(seg + 1, len(route) - 1)]
                 fb.next_waypoint = Point(x=nxt[0], y=nxt[1])
                 handle.publish_feedback(fb)
                 time.sleep(0.5)
