@@ -1,4 +1,5 @@
 """Planner against a stub client. No network, no ROS."""
+import json
 from types import SimpleNamespace as NS
 
 from corridor_planner.planner import Planner
@@ -73,3 +74,18 @@ def test_sdk_error_keeps_node_alive():
             raise ConnectionError('offline')
     out = Planner(Bad([]), tools={}, schemas=SCHEMAS).run('hi')
     assert out.error.startswith('ConnectionError') and not out.refused
+
+
+def test_rich_tool_content_passes_blocks_and_trims_trace():
+    blocks = [{'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/png', 'data': 'AAAA'}},
+              {'type': 'text', 'text': 'camera v1'}]
+    client = StubClient([
+        NS(stop_reason='tool_use', usage=usage(), content=[NS(type='tool_use', id='t1', name='describe_scene', input={'vehicle': 'v1'})]),
+        NS(stop_reason='end_turn', usage=usage(), content=[NS(type='text', text='a red box')]),
+    ])
+    p = Planner(client, tools={'describe_scene': lambda vehicle: {'vehicle': vehicle, 'width': 640, '_content': blocks}}, schemas=SCHEMAS)
+    p.run('what does v1 see')
+    sent = client.requests[1]['messages'][-1]['content'][0]['content']
+    assert sent == blocks
+    assert p.trace[-2]['result'] == {'vehicle': 'v1', 'width': 640, 'content_blocks': ['image', 'text']}
+    assert 'AAAA' not in json.dumps(p.trace)
