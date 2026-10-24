@@ -91,9 +91,9 @@ if [[ $which == 12 || $which == all ]]; then
   sleep 4
   ros2 topic pub --once /mission/tool_call std_msgs/String "{data: '{\"name\": \"list_vehicles\", \"input\": {}}'}" > /dev/null 2>&1
   sleep 3
-  grep -o "accepted.: True[^}]*" /tmp/trace12.txt | head -2
-  grep -o "'mode': '[a-z]*'" /tmp/trace12.txt | tail -1
-  grep -q "accepted.: True" /tmp/trace12.txt && grep -q "'mode': 'patrol'" /tmp/trace12.txt && echo "PROOF 12 PASS (debug path; the model path needs ANTHROPIC_API_KEY)" || { echo "PROOF 12 FAIL"; tail -5 /tmp/mission12.log; }
+  grep -o '"accepted": true[^}]*' /tmp/trace12.txt | head -2
+  grep -o '"mode": "[a-z]*"' /tmp/trace12.txt | tail -1
+  grep -q '"accepted": true' /tmp/trace12.txt && grep -q '"mode": "patrol"' /tmp/trace12.txt && echo "PROOF 12 PASS (debug path; the model path needs ANTHROPIC_API_KEY)" || { echo "PROOF 12 FAIL"; tail -5 /tmp/mission12.log; }
   pkill -f "mission.launch" 2>/dev/null; pkill -f "corridor_planner/lib" 2>/dev/null; cleanup
 fi
 
