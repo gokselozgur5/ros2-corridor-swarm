@@ -1,0 +1,89 @@
+# Architecture
+
+Everything is simulated. The target is a small fleet of ground vehicles that live in a Gazebo world with real physics, patrol a mission corridor, respect a geofence, show up in ATAK, and take missions in plain language through a Claude-backed planner.
+
+```
+                 ┌──────────────────────────────────────────────────────────┐
+                 │  Mac                                                     │
+                 │  Foxglove (ws://thor:8765)   ATAK emulator   terminal    │
+                 └───────────▲───────────────────────▲──────────────────────┘
+                             │ websocket             │ CoT / TCP 8087
+┌────────────────────────────┼───────────────────────┼──────────────────────┐
+│ Jetson Thor (ROS 2 Jazzy, source build, ROS_DOMAIN_ID=42)                 │
+│                            │                       │                      │
+│   foxglove_bridge ─────────┘          cot_bridge ──┘   FreeTAKServer      │
+│         ▲                                 ▲             (Docker)          │
+│         │ all topics                      │ /fleet/state                  │
+│   ┌─────┴─────────────────────────────────┴───────────────────────┐      │
+│   │ mission layer                                                 │      │
+│   │   mission_planner  (Claude tool use)  ── tools ──┐            │      │
+│   │   patrol_server    (action: Patrol)              │            │      │
+│   │   geofence_monitor (corridor polygon, GeoJSON)   │            │      │
+│   └──────────────────────────────▲───────────────────┼────────────┘      │
+│                                  │ /vN/odom /vN/fix  │ /vN/cmd_vel        │
+│   ┌──────────────────────────────┴───────────────────▼────────────┐      │
+│   │ vehicle layer (per vehicle namespace /v1, /v2, ...)           │      │
+│   │   waypoint_follower  (pure pursuit on cmd_vel)                │      │
+│   │   ros2_control diff_drive_controller  (wheel motors)          │      │
+│   │   sensors: lidar, rgb camera, imu, navsat  (gz plugins)       │      │
+│   └──────────────────────────────▲───────────────────────────────┘      │
+│                                  │ ros_gz_bridge                         │
+│   ┌──────────────────────────────┴───────────────────────────────┐      │
+│   │ Gazebo Harmonic (gz-sim), headless, sim time                  │      │
+│   │   world: corridor.sdf  (terrain, obstacles, the polygon)      │      │
+│   │   model: ugv.urdf.xacro (chassis, 4 wheels, sensor mounts)    │      │
+│   └──────────────────────────────────────────────────────────────┘      │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+## Layers
+
+**Simulation.** Gazebo Harmonic runs headless on Thor and owns physics, motors and sensors. Nothing in ROS fakes a sensor; if a topic says lidar, a lidar plugin produced it. `ros_gz_bridge` moves clock, cmd_vel, odometry and sensor topics across. Sim time everywhere (`use_sim_time: true`).
+
+**Vehicle.** One ROS namespace per vehicle. `ros2_control` with `diff_drive_controller` turns `cmd_vel` into wheel joint velocities inside Gazebo, so motors have inertia, slip and limits. `waypoint_follower` is a pure-pursuit controller: it takes a path, publishes `cmd_vel`, reports progress. Nav2 is deliberately not in the first build (it is ~40 source packages on this underlay); it can replace `waypoint_follower` later without touching the mission layer.
+
+**Mission.** `patrol_server` is a ROS action: given a corridor id and a vehicle, it generates the patrol route along the polygon and feeds the follower. `geofence_monitor` watches every vehicle fix against the polygon and raises `/fleet/geofence_events`. `mission_planner` is the Claude node: natural language in, ROS actions out.
+
+**Operator.** Foxglove for the ROS view (map panel on fixes, 3D panel on tf, plots on cmd_vel). ATAK for the tactical view: `cot_bridge` turns `/fleet/state` into Cursor-on-Target events and sends them to FreeTAKServer; ATAK markers come back as waypoints.
+
+## The Claude node
+
+`mission_planner` is a plain Python node using the Anthropic SDK with tool use. Its tools are thin wrappers over ROS:
+
+| tool | ROS side |
+|---|---|
+| `list_vehicles()` | reads `/fleet/state` |
+| `get_vehicle(id)` | fix, odom, battery, current goal |
+| `patrol(vehicle, corridor)` | sends the `Patrol` action goal |
+| `goto(vehicle, lat, lon)` | sends a single waypoint |
+| `stop(vehicle)` | cancels the active goal |
+| `describe_scene(vehicle)` | grabs one camera frame, returns it as an image block |
+| `geofence_events(since)` | recent breaches |
+
+Rules the node enforces, not the prompt:
+- Model `claude-opus-5-5` for planning, `claude-haiku-5-5` for the periodic status summary. Both with `fallbacks: "default"` under beta `server-side-fallback-2026-07-01`.
+- `stop_reason` is checked before `content` is read. A `refusal` is logged with its `stop_details.category` and surfaces as a ROS diagnostic, never as a crash.
+- Every tool call is logged to `/mission/llm_trace` so Foxglove shows what the planner did and why.
+- The planner never publishes `cmd_vel`. It only sends action goals, which the geofence can veto.
+
+## Packages
+
+| package | type | contents |
+|---|---|---|
+| `corridor_sim` | ament_python | existing `vehicle_sim` (kept as the no-Gazebo fallback), GeoJSON loader, launch files |
+| `corridor_description` | ament_cmake | `ugv.urdf.xacro`, meshes, `ros2_control` tags, sensor mounts |
+| `corridor_gz` | ament_cmake | `corridor.sdf` world, gz plugins config, bridge yaml, `sim.launch.py` |
+| `corridor_nav` | ament_python | `waypoint_follower`, `patrol_server`, `geofence_monitor` |
+| `corridor_msgs` | ament_cmake | `Patrol.action`, `FleetState.msg`, `GeofenceEvent.msg` |
+| `corridor_cot` | ament_python | `cot_bridge` (pytak) |
+| `corridor_planner` | ament_python | `mission_planner` (Anthropic SDK) |
+
+External, cloned into `ws/src` via `ws/deps.repos` and built with colcon: `ros_gz` (branch `jazzy`), `ros2_control`, `ros2_controllers`, `gz_ros2_control`, `foxglove_bridge` (0.8.5, already there). Gazebo Harmonic itself comes from the OSRF apt repo (it is not a ROS package, so it does not shadow the source build).
+
+## Decisions
+
+- **Gazebo, not Isaac Sim.** Isaac needs x86 + RTX; Thor is aarch64. Gazebo Harmonic has arm64 packages for Ubuntu 24.04.
+- **Headless.** `gz sim -s` only. The Mac sees the world through Foxglove's 3D panel from tf and sensor topics. GUI on Thor would steal GPU from the people who share it.
+- **Physics first, Nav2 later.** The point is motors and sensors behaving like hardware; a pure-pursuit follower is 150 lines and keeps the stack buildable.
+- **Claude plans, ROS executes.** The LLM is an operator with a radio, not a controller in the loop. Tick-rate decisions stay in ROS.
+- **Keep `vehicle_sim`.** Day 1's kinematic node remains the smoke test when Gazebo is not available.
