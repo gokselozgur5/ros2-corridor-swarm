@@ -3,6 +3,8 @@
   <!-- Differential 4-wheel UGV. Metres, kilograms. Frames follow REP-103 (x forward, z up). -->
   <xacro:arg name="prefix" default=""/>
   <xacro:arg name="use_ros2_control" default="false"/>
+  <xacro:arg name="sim" default="false"/>
+  <xacro:arg name="ns" default="v1"/>
   <xacro:property name="prefix" value="$(arg prefix)"/>
 
   <xacro:property name="body_l" value="1.20"/>
@@ -82,6 +84,11 @@
   <xacro:mount name="camera" xyz="${body_l/2 - 0.02} 0 ${body_h/2 - 0.05}"/>
   <xacro:mount name="imu"    xyz="0 0 0" size="0.03 0.03 0.01"/>
   <xacro:mount name="gnss"   xyz="-0.40 0 ${body_h/2 + 0.05}" size="0.06 0.06 0.02"/>
+
+  <xacro:if value="$(arg sim)">
+    <xacro:include filename="$(find corridor_description)/urdf/ugv.gazebo.xacro"/>
+    <xacro:ugv_gazebo prefix="${prefix}" ns="$(arg ns)"/>
+  </xacro:if>
 
   <xacro:if value="$(arg use_ros2_control)">
     <ros2_control name="${prefix}ugv_system" type="system">
