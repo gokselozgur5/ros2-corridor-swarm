@@ -5,6 +5,7 @@ a/d  turn left / right
 space  stop, q quit. Any key not pressed for hold_s seconds -> stop.
 On start it publishes an empty Path so the follower goes idle and does not fight the keys.
 """
+import os
 import select
 import sys
 import termios
@@ -79,11 +80,12 @@ def main():
     try:
         while rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.02)
-            if select.select([sys.stdin], [], [], 0)[0]:
-                k = sys.stdin.read(1)
-                if k == 'q' or k == '':
+            if select.select([fd], [], [], 0)[0]:
+                data = os.read(fd, 64)   # unbuffered: every byte select saw is consumed now
+                if not data or b'q' in data:
                     break
-                node.key(k)
+                for k in data.decode(errors='ignore'):
+                    node.key(k)
     except KeyboardInterrupt:
         pass
     finally:
