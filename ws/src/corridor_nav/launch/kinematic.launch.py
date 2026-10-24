@@ -5,6 +5,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -39,5 +40,9 @@ def generate_launch_description():
         DeclareLaunchArgument('n', default_value='1'),
         DeclareLaunchArgument('lookahead_m', default_value='3.0'),
         DeclareLaunchArgument('speed_mps', default_value='3.0'),
+        DeclareLaunchArgument('foxglove', default_value='true'),
+        Node(package='foxglove_bridge', executable='foxglove_bridge', name='foxglove_bridge',
+             condition=IfCondition(LaunchConfiguration('foxglove')),
+             parameters=[{'port': 8765, 'address': '0.0.0.0', 'send_buffer_limit': 100000000}]),
         OpaqueFunction(function=launch_setup),
     ])
