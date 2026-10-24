@@ -21,6 +21,7 @@ setup(
     entry_points={
         'console_scripts': [
             'vehicle_sim = corridor_sim.vehicle_sim:main',
+            'unicycle_sim = corridor_sim.unicycle_sim:main',
         ],
     },
 )
