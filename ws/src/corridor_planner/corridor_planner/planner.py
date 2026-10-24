@@ -105,9 +105,15 @@ class Planner:
                         payload, is_error = fn(**(use.input or {})), False
                     except Exception as exc:
                         payload, is_error = {'error': f'{type(exc).__name__}: {exc}'}, True
-                self.trace.append({'event': 'tool', 'name': use.name, 'input': use.input, 'result': payload, 'is_error': is_error})
-                results.append({'type': 'tool_result', 'tool_use_id': use.id,
-                                'content': json.dumps(payload, default=str), 'is_error': is_error})
+                # A tool may return rich content (e.g. an image block list) under _content; the trace gets a summary.
+                if isinstance(payload, dict) and '_content' in payload:
+                    content = payload['_content']
+                    shown = {k: v for k, v in payload.items() if k != '_content'}
+                    shown['content_blocks'] = [b.get('type') for b in content]
+                else:
+                    content, shown = json.dumps(payload, default=str), payload
+                self.trace.append({'event': 'tool', 'name': use.name, 'input': use.input, 'result': shown, 'is_error': is_error})
+                results.append({'type': 'tool_result', 'tool_use_id': use.id, 'content': content, 'is_error': is_error})
             self.messages.append({'role': 'user', 'content': results})
         out.error = 'max_turns reached'
         self.trace.append({'event': 'error', 'error': out.error})
