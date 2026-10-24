@@ -6,7 +6,7 @@ repositories:
   rosx_introspection:
     type: git
     url: https://github.com/facontidavide/rosx_introspection.git
-    version: main
+    version: master
   ros_gz:
     type: git
     url: https://github.com/gazebosim/ros_gz.git
