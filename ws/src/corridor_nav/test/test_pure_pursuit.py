@@ -28,7 +28,8 @@ def test_cross_track_sign():
 
 
 def test_arrival_stops():
-    cmd = step(0.1, 0.1, 0.0, SQUARE, speed=1.0, lookahead=2.0, arrive_tolerance=0.5)
+    # Open path: arrival is the far end, not the shared start/end of the closed square.
+    cmd = step(0.1, 10.1, 0.0, SQUARE[:4], speed=1.0, lookahead=2.0, arrive_tolerance=0.5)
     assert cmd.done and cmd.linear == 0.0 and cmd.angular == 0.0
 
 
