@@ -22,3 +22,8 @@ SCHEMAS = [
      'input_schema': {'type': 'object', 'properties': {'limit': {'type': 'integer'}}, 'required': ['limit'],
                       'additionalProperties': False}, 'strict': True},
 ]
+
+SCHEMAS.append(
+    {'name': 'describe_scene', 'description': 'One current camera frame from the vehicle, returned as an image for you to look at.',
+     'input_schema': {'type': 'object', 'properties': {'vehicle': {'type': 'string'}}, 'required': ['vehicle'],
+                      'additionalProperties': False}, 'strict': True})
