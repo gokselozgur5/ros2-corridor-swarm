@@ -198,12 +198,12 @@ class MissionPlanner(Node):
             self.reply('busy with the previous request')
             return
         try:
-            threading.Thread(target=self.handle, args=(msg.data,), daemon=True).start()
+            threading.Thread(target=self.handle_request, args=(msg.data,), daemon=True).start()
         except Exception:
             self.busy.release()
             raise
 
-    def handle(self, text):
+    def handle_request(self, text):
         try:
             if self.planner is None:
                 self.reply(f'dry run, no model: {text}')
