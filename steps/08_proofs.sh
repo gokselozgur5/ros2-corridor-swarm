@@ -41,9 +41,9 @@ if [[ $which == 8 || $which == all ]]; then
   sleep 2
   ros2 run corridor_nav send_path --ros-args -r __ns:=/v1 -p "points:=[20.0,20.0,20.0,-60.0]" 2>&1 | grep -oE "sent.*|no subscriber.*"   # south, out of the box
   t0=$(date +%s.%N); ev=""
-  for i in $(seq 1 60); do grep -q "type: 0" /tmp/gf8.txt 2>/dev/null && ev=yes && break; sleep 0.5; done
+  for i in $(seq 1 60); do grep -q "^type: 0" /tmp/gf8.txt 2>/dev/null && ev=yes && break; sleep 0.5; done
   sleep 1; s=$(grep -v -- --- /tmp/status8.txt 2>/dev/null | tail -1)
-  grep -m1 -B2 -A3 "type: 0" /tmp/gf8.txt | head -8
+  grep -m1 -B2 -A3 "^type: 0" /tmp/gf8.txt | head -8
   echo "exit event: ${ev:-no}; follower status: ${s:-unknown}"
   [[ $ev == yes && $s == idle ]] && echo "PROOF 8 PASS" || echo "PROOF 8 FAIL"
   cleanup
