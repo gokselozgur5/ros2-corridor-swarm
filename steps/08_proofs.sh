@@ -7,7 +7,7 @@ LOG=~/deletdis/log/08_proofs.log; exec > >(tee -a "$LOG") 2>&1
 which=${1:-all}
 echo "=== $(date -Is) proofs: $which"
 
-cleanup() { pkill -f "corridor_nav" 2>/dev/null; pkill -f "corridor_sim" 2>/dev/null; pkill -f "gz sim -s" 2>/dev/null; pkill -f parameter_bridge 2>/dev/null; pkill -f robot_state_publisher 2>/dev/null; pkill -f "ros_gz_sim create" 2>/dev/null; sleep 1; }
+cleanup() { pkill -f "ros2 launch corridor" 2>/dev/null; pkill -f "corridor_nav/lib" 2>/dev/null; pkill -f "corridor_sim/lib" 2>/dev/null; pkill -f "corridor_gz" 2>/dev/null; pkill -f "gz sim -s" 2>/dev/null; pkill -f parameter_bridge 2>/dev/null; pkill -f robot_state_publisher 2>/dev/null; pkill -f "ros_gz_sim/create|ros_gz_sim create" 2>/dev/null; pkill -f "ros2 topic echo" 2>/dev/null; rm -f /tmp/status7.txt /tmp/status8.txt /tmp/xte7.txt /tmp/gf8.txt; sleep 1; }
 
 if [[ $which == 3 || $which == all ]]; then
   echo "--- #3 xacro -> URDF -> check_urdf"
@@ -21,8 +21,9 @@ if [[ $which == 7 || $which == all ]]; then
   ros2 launch corridor_nav kinematic.launch.py > /tmp/kin7.log 2>&1 &
   sleep 4
   ros2 run corridor_nav send_path --ros-args -r __ns:=/v1 -p "points:=[20.0,20.0,80.0,20.0,80.0,80.0,20.0,80.0]" > /dev/null 2>&1
-  timeout 70 ros2 topic echo /v1/follower/cross_track --field data > /tmp/xte7.txt 2>/dev/null &
-  for i in $(seq 1 70); do s=$(timeout 2 ros2 topic echo --once /v1/follower/status --field data 2>/dev/null); [[ $s == arrived ]] && break; sleep 1; done
+  timeout 200 ros2 topic echo /v1/follower/cross_track --field data > /tmp/xte7.txt 2>/dev/null &
+  timeout 200 ros2 topic echo /v1/follower/status --field data > /tmp/status7.txt 2>/dev/null &
+  for i in $(seq 1 200); do grep -q arrived /tmp/status7.txt 2>/dev/null && break; sleep 1; done; s=$(tail -1 /tmp/status7.txt 2>/dev/null)
   echo "status after ${i}s: ${s:-unknown}"
   awk 'function abs(v){return v<0?-v:v} {if(abs($1)>m)m=abs($1); n++} END{printf "cross-track samples=%d max_abs=%.2f m\n", n, m; exit !(n>10 && m<1.0)}' /tmp/xte7.txt \
     && [[ $s == arrived ]] && echo "PROOF 7 PASS" || echo "PROOF 7 FAIL"
@@ -35,10 +36,11 @@ if [[ $which == 8 || $which == all ]]; then
   ros2 launch corridor_nav kinematic.launch.py > /tmp/kin8.log 2>&1 &
   sleep 4
   timeout 40 ros2 topic echo /fleet/geofence_events > /tmp/gf8.txt 2>/dev/null &
+  timeout 60 ros2 topic echo /v1/follower/status --field data > /tmp/status8.txt 2>/dev/null &
   ros2 run corridor_nav send_path --ros-args -r __ns:=/v1 -p "points:=[20.0,20.0,20.0,-60.0]" > /dev/null 2>&1   # south, out of the box
   t0=$(date +%s.%N); ev=""
   for i in $(seq 1 60); do grep -q "type: 0" /tmp/gf8.txt 2>/dev/null && ev=yes && break; sleep 0.5; done
-  s=$(timeout 2 ros2 topic echo --once /v1/follower/status --field data 2>/dev/null)
+  sleep 1; s=$(tail -1 /tmp/status8.txt 2>/dev/null)
   grep -m1 -B2 -A3 "type: 0" /tmp/gf8.txt | head -8
   echo "exit event: ${ev:-no}; follower status: ${s:-unknown}"
   [[ $ev == yes && $s == idle ]] && echo "PROOF 8 PASS" || echo "PROOF 8 FAIL"
