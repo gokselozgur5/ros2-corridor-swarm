@@ -10,6 +10,7 @@ import rclpy
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry, Path
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
 from std_msgs.msg import Float32, String
 
 from corridor_nav.pure_pursuit import step
@@ -34,11 +35,13 @@ class WaypointFollower(Node):
         self.status = 'idle'
 
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
-        self.status_pub = self.create_publisher(String, 'follower/status', 10)
+        # Latched: patrol_server and the planner may start after us and need the current status, not the next change.
+        self.status_pub = self.create_publisher(String, 'follower/status', QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.xte_pub = self.create_publisher(Float32, 'follower/cross_track', 10)
         self.create_subscription(Odometry, 'odom', self.on_odom, 20)
         self.create_subscription(Path, 'path', self.on_path, 10)
         self.timer = self.create_timer(1.0 / self.get_parameter('rate_hz').value, self.tick)
+        self.status_pub.publish(String(data=self.status))
 
     def on_odom(self, msg):
         p = msg.pose.pose
