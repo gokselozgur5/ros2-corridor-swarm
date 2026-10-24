@@ -1,6 +1,8 @@
 # ros2-corridor-swarm
 
-A one-week ROS 2 Jazzy project on Jetson Thor, fully simulated.
+A ROS 2 Jazzy project on Jetson Thor, fully simulated: a fleet of ground vehicles with real physics in a Gazebo world, patrolling a mission corridor, reporting to ATAK, taking missions in plain language through a Claude-backed planner.
+
+Architecture: [ARCHITECTURE.md](ARCHITECTURE.md). Plan with a proof per step: [PLAN.md](PLAN.md). Progress: GitHub milestones and issues.
 
 Vehicles patrol a mission corridor (the KML/GeoJSON polygon from map-writer), stay inside a geofence, and report to ATAK over CoT. Foxglove on the Mac shows the ROS side.
 
@@ -25,12 +27,6 @@ Why these choices:
 
 `steps/` holds the scripts each day was done with; they run inside the `ros2` tmux session (`tmux attach -t ros2`, windows `work` and `run`).
 
-## Week
+## Status
 
-1. Done: workspace, foxglove_bridge from source, `vehicle_sim` (NavSatFix, Odometry, tf at 10 Hz along a 3-waypoint route), Foxglove connection from the Mac verified.
-2. Vehicle sim: the corridor polygon loaded from GeoJSON, several vehicles, sim time.
-3. Patrol action server and geofence against the corridor polygon.
-4. CoT bridge: vehicles appear in ATAK (FreeTAKServer in Docker, ATAK in an emulator).
-5. End to end: ATAK marker becomes a vehicle waypoint.
-6. QoS, lifecycle nodes, launch arguments.
-7. Demo video and this README.
+Phase 0 (kinematic baseline: workspace, foxglove_bridge, `vehicle_sim`, Foxglove from the Mac) done. Phase 1 (Gazebo world, physical vehicle) next. See PLAN.md.
