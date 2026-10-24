@@ -39,5 +39,8 @@ def generate_launch_description():
         Node(package='controller_manager', executable='spawner', output='screen', condition=IfCondition(use_ros2_control),
              arguments=['joint_state_broadcaster', '-c', '/v1/controller_manager', '--controller-manager-timeout', '60']),
         Node(package='controller_manager', executable='spawner', output='screen', condition=IfCondition(use_ros2_control),
-             arguments=['diff_drive', '-c', '/v1/controller_manager', '--controller-manager-timeout', '60']),
+             arguments=['diff_drive', '-c', '/v1/controller_manager', '--controller-manager-timeout', '60',
+                        '--controller-ros-args', '-r /v1/diff_drive/odom:=/v1/odom']),
+        Node(package='corridor_nav', executable='twist_stamper', namespace='v1', name='twist_stamper',
+             condition=IfCondition(use_ros2_control), parameters=[{'frame_id': 'v1/base_footprint', 'use_sim_time': True}]),
     ])
