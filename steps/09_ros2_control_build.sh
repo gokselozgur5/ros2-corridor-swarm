@@ -6,6 +6,7 @@ echo "=== $(date -Is) start"
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
 vcs import ws/src < ws/deps.repos
+sudo apt-get install -y -q python3-typeguard python3-jinja2   # generate_parameter_library
 # Only what we use from the big repos: controllers other than diff_drive and joint_state_broadcaster are skipped.
 for p in ws/src/ros2_controllers/*/; do
   case "$(basename $p)" in diff_drive_controller|joint_state_broadcaster|ros2_controllers|ros2_controllers_test_nodes) ;; *) touch "$p/COLCON_IGNORE";; esac
