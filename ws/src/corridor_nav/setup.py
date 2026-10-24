@@ -22,6 +22,7 @@ setup(
     entry_points={
         'console_scripts': [
             'waypoint_follower = corridor_nav.waypoint_follower:main',
+            'geofence_monitor = corridor_nav.geofence_monitor:main',
         ],
     },
 )
