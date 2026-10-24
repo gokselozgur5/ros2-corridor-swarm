@@ -17,7 +17,7 @@ for p in ws/src/ros2_control/*/; do case "$(basename $p)" in rqt_controller_mana
 rm -f ws/src/ros2_control/ros2_control_test_assets/COLCON_IGNORE   # hardware_interface tests reference it; cheap
 cd ws
 # rsl declares libexpected-dev (an apt key) rather than the tl_expected package, so colcon cannot order it: build it first.
-colcon build --symlink-install --packages-select tl_expected --cmake-args -DBUILD_TESTING=OFF
+colcon build --symlink-install --packages-select tl_expected tl-expected --cmake-args -DBUILD_TESTING=OFF -DEXPECTED_BUILD_TESTS=OFF
 source install/setup.bash
 colcon build --symlink-install --packages-up-to gz_ros2_control diff_drive_controller joint_state_broadcaster \
   --cmake-args -DBUILD_TESTING=OFF
