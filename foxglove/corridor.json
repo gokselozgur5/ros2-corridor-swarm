@@ -1,0 +1,65 @@
+{
+  "configById": {
+    "map!fleet": {
+      "topicColors": {"/v1/fix": "#ff8c00", "/v2/fix": "#00bfff", "/v3/fix": "#7cfc00"},
+      "zoomLevel": 15,
+      "followTopic": "/v1/fix",
+      "layer": "map",
+      "disabledTopics": [],
+      "foxglovePanelTitle": "Fleet on the map"
+    },
+    "3D!scene": {
+      "cameraState": {"perspective": true, "distance": 60, "phi": 50, "thetaOffset": 45, "targetOffset": [20, 20, 0]},
+      "followMode": "follow-pose",
+      "followTf": "v1/base_footprint",
+      "scene": {"enableStats": false, "transforms": {"showLabel": true}},
+      "topics": {
+        "/v1/scan": {"visible": true, "pointSize": 3, "colorField": "intensity", "colorMode": "flat", "flatColor": "#ff8c00"},
+        "/v1/camera/image": {"visible": true, "distance": 1}
+      },
+      "foxglovePanelTitle": "v1 3D"
+    },
+    "Image!cam": {"imageMode": {"imageTopic": "/v1/camera/image"}, "foxglovePanelTitle": "v1 camera"},
+    "Plot!xte": {
+      "paths": [
+        {"value": "/v1/follower/cross_track.data", "enabled": true, "timestampMethod": "receiveTime", "label": "cross-track m"},
+        {"value": "/v1/odom.twist.twist.linear.x", "enabled": true, "timestampMethod": "receiveTime", "label": "speed m/s"}
+      ],
+      "showLegend": true, "legendDisplay": "floating", "followingViewWidth": 60, "foxglovePanelTitle": "v1 follower"
+    },
+    "RawMessages!trace": {"topicPath": "/mission/llm_trace", "foxglovePanelTitle": "planner trace"},
+    "RawMessages!status": {"topicPath": "/v1/follower/status", "foxglovePanelTitle": "v1 status"},
+    "RawMessages!geofence": {"topicPath": "/fleet/geofence_events", "foxglovePanelTitle": "geofence events"},
+    "RawMessages!reply": {"topicPath": "/mission/reply", "foxglovePanelTitle": "planner reply"},
+    "Publish!request": {
+      "topicName": "/mission/request", "datatype": "std_msgs/msg/String",
+      "buttonText": "send request", "buttonColor": "#ff8c00",
+      "value": "{\n  \"data\": \"send v1 to patrol the corridor, one lap\"\n}",
+      "foxglovePanelTitle": "mission request"
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {"speed": 1},
+  "layout": {
+    "direction": "row",
+    "first": {
+      "direction": "column",
+      "first": "map!fleet",
+      "second": {"direction": "row", "first": "3D!scene", "second": "Image!cam", "splitPercentage": 60},
+      "splitPercentage": 50
+    },
+    "second": {
+      "direction": "column",
+      "first": "Plot!xte",
+      "second": {
+        "direction": "column",
+        "first": {"direction": "row", "first": "RawMessages!status", "second": "RawMessages!geofence"},
+        "second": {"direction": "row", "first": {"direction": "column", "first": "Publish!request", "second": "RawMessages!reply"}, "second": "RawMessages!trace"},
+        "splitPercentage": 35
+      },
+      "splitPercentage": 30
+    },
+    "splitPercentage": 55
+  }
+}
