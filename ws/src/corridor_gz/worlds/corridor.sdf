@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<!-- The demo corridor: a 200 x 200 m box whose SW corner is the world origin at 52.7000 N, 3.0000 W.
+     Headless; rendering sensors still need the Sensors system with ogre2. -->
+<sdf version="1.9">
+  <world name="corridor">
+    <physics name="1ms" type="ignored"><max_step_size>0.004</max_step_size><real_time_factor>1.0</real_time_factor></physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors"><render_engine>ogre2</render_engine></plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-navsat-system" name="gz::sim::systems::NavSat"/>
+
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>52.7000</latitude_deg>
+      <longitude_deg>-3.0000</longitude_deg>
+      <elevation>100</elevation>
+      <heading_deg>0</heading_deg>
+    </spherical_coordinates>
+
+    <light type="directional" name="sun">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 50 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground">
+      <static>true</static>
+      <link name="link">
+        <collision name="c"><geometry><plane><normal>0 0 1</normal><size>600 600</size></plane></geometry>
+          <surface><friction><ode><mu>0.9</mu><mu2>0.9</mu2></ode></friction></surface></collision>
+        <visual name="v"><geometry><plane><normal>0 0 1</normal><size>600 600</size></plane></geometry>
+          <material><ambient>0.35 0.45 0.25 1</ambient><diffuse>0.35 0.45 0.25 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- Corridor edges as thin ground markers: SW (0,0) to NE (202,200). -->
+    <model name="corridor_edges"><static>true</static><link name="link">
+      <visual name="south"><pose>101 0 0.02 0 0 0</pose><geometry><box><size>202 0.5 0.04</size></box></geometry><material><ambient>1 0.6 0 1</ambient><diffuse>1 0.6 0 1</diffuse></material></visual>
+      <visual name="north"><pose>101 200 0.02 0 0 0</pose><geometry><box><size>202 0.5 0.04</size></box></geometry><material><ambient>1 0.6 0 1</ambient><diffuse>1 0.6 0 1</diffuse></material></visual>
+      <visual name="west"><pose>0 100 0.02 0 0 0</pose><geometry><box><size>0.5 200 0.04</size></box></geometry><material><ambient>1 0.6 0 1</ambient><diffuse>1 0.6 0 1</diffuse></material></visual>
+      <visual name="east"><pose>202 100 0.02 0 0 0</pose><geometry><box><size>0.5 200 0.04</size></box></geometry><material><ambient>1 0.6 0 1</ambient><diffuse>1 0.6 0 1</diffuse></material></visual>
+    </link></model>
+
+    <!-- A few obstacles inside the corridor. -->
+    <model name="crate_1"><static>true</static><pose>60 80 0.75 0 0 0.3</pose><link name="link">
+      <collision name="c"><geometry><box><size>1.5 1.5 1.5</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>1.5 1.5 1.5</size></box></geometry><material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual></link></model>
+    <model name="crate_2"><static>true</static><pose>140 120 0.75 0 0 -0.5</pose><link name="link">
+      <collision name="c"><geometry><box><size>1.5 1.5 1.5</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>1.5 1.5 1.5</size></box></geometry><material><ambient>0.1 0.1 0.8 1</ambient><diffuse>0.1 0.1 0.8 1</diffuse></material></visual></link></model>
+    <model name="barrel"><static>true</static><pose>100 40 0.6 0 0 0</pose><link name="link">
+      <collision name="c"><geometry><cylinder><radius>0.4</radius><length>1.2</length></cylinder></geometry></collision>
+      <visual name="v"><geometry><cylinder><radius>0.4</radius><length>1.2</length></cylinder></geometry><material><ambient>0.9 0.9 0.1 1</ambient><diffuse>0.9 0.9 0.1 1</diffuse></material></visual></link></model>
+  </world>
+</sdf>
