@@ -27,6 +27,10 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('world', default_value=os.path.join(gz_share, 'worlds', 'corridor.sdf')),
         DeclareLaunchArgument('use_ros2_control', default_value='false'),
+        DeclareLaunchArgument('foxglove', default_value='true'),
+        Node(package='foxglove_bridge', executable='foxglove_bridge', name='foxglove_bridge',
+             condition=IfCondition(LaunchConfiguration('foxglove')),
+             parameters=[{'port': 8765, 'address': '0.0.0.0', 'send_buffer_limit': 100000000, 'use_sim_time': True}]),
         ExecuteProcess(cmd=['gz', 'sim', '-s', '-r', '-v', '2', world], output='screen'),
         Node(package='robot_state_publisher', executable='robot_state_publisher', namespace='v1',
              parameters=[{'robot_description': description, 'use_sim_time': True, 'frame_prefix': ''}]),
