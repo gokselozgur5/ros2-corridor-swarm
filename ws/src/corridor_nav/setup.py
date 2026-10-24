@@ -26,6 +26,7 @@ setup(
             'geofence_monitor = corridor_nav.geofence_monitor:main',
             'send_path = corridor_nav.send_path:main',
             'patrol_server = corridor_nav.patrol_server:main',
+            'twist_stamper = corridor_nav.twist_stamper:main',
         ],
     },
 )
