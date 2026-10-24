@@ -14,15 +14,16 @@ def launch_setup(context):
     share = get_package_share_directory('corridor_nav')
     corridor = LaunchConfiguration('corridor').perform(context)
     n = int(LaunchConfiguration('n').perform(context))
+    first = int(LaunchConfiguration('first').perform(context))
     lookahead = float(LaunchConfiguration('lookahead_m').perform(context))
     speed = float(LaunchConfiguration('speed_mps').perform(context))
-    names = [f'v{i}' for i in range(1, n + 1)]
+    names = [f'v{i}' for i in range(first, first + n)]
     nodes = []
     for i, v in enumerate(names):
         nodes += [
             Node(package='corridor_sim', executable='unicycle_sim', namespace=v, name='unicycle_sim',
                  parameters=[{'origin_lat': 52.7000, 'origin_lon': -3.0000,
-                              'start_x': 20.0 + 25.0 * i, 'start_y': 20.0, 'child_frame_id': f'{v}/base_link'}]),
+                              'start_x': 20.0 + 25.0 * (first - 1 + i), 'start_y': 20.0, 'child_frame_id': f'{v}/base_link'}]),
             Node(package='corridor_nav', executable='waypoint_follower', namespace=v, name='waypoint_follower',
                  parameters=[{'speed_mps': speed, 'lookahead_m': lookahead, 'arrive_tolerance_m': 1.5}]),
             Node(package='corridor_nav', executable='patrol_server', namespace=v, name='patrol_server',
@@ -38,6 +39,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('corridor', default_value=os.path.join(share, 'config', 'corridor_demo.geojson')),
         DeclareLaunchArgument('n', default_value='1'),
+        DeclareLaunchArgument('first', default_value='1'),   # first vehicle number, e.g. first:=2 n:=2 beside a Gazebo v1
         DeclareLaunchArgument('lookahead_m', default_value='3.0'),
         DeclareLaunchArgument('speed_mps', default_value='3.0'),
         DeclareLaunchArgument('foxglove', default_value='true'),
