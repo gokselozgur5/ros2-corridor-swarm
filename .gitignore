@@ -1,0 +1,4 @@
+ws/build/
+ws/install/
+ws/log/
+__pycache__/
