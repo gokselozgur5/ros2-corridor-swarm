@@ -7,6 +7,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.conditions import IfCondition
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -20,7 +21,8 @@ def generate_launch_description():
     xacro_file = os.path.join(desc_share, 'urdf', 'ugv.urdf.xacro')
     description = ParameterValue(Command([
         FindExecutable(name='xacro'), ' ', xacro_file,
-        ' sim:=true ns:=v1 prefix:=v1/ use_ros2_control:=', use_ros2_control]), value_type=str)
+        ' sim:=true ns:=v1 prefix:=v1/ use_ros2_control:=', use_ros2_control,
+        ' controllers_yaml:=', os.path.join(gz_share, 'config', 'controllers_v1.yaml')]), value_type=str)
 
     return LaunchDescription([
         DeclareLaunchArgument('world', default_value=os.path.join(gz_share, 'worlds', 'corridor.sdf')),
@@ -33,4 +35,9 @@ def generate_launch_description():
                         '-x', '20', '-y', '20', '-z', '0.5']),
         Node(package='ros_gz_bridge', executable='parameter_bridge', output='screen',
              parameters=[{'config_file': os.path.join(gz_share, 'config', 'bridge_v1.yaml'), 'use_sim_time': True}]),
+        # ros2_control: spawners wait for /v1/controller_manager, which the gz plugin starts with the model.
+        Node(package='controller_manager', executable='spawner', output='screen', condition=IfCondition(use_ros2_control),
+             arguments=['joint_state_broadcaster', '-c', '/v1/controller_manager', '--controller-manager-timeout', '60']),
+        Node(package='controller_manager', executable='spawner', output='screen', condition=IfCondition(use_ros2_control),
+             arguments=['diff_drive', '-c', '/v1/controller_manager', '--controller-manager-timeout', '60']),
     ])
