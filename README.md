@@ -29,7 +29,7 @@ Why these choices:
 
 ## Status
 
-Phase 0 done. Phase 1: Gazebo Harmonic installed, ros_gz and the gz vendor stack built from source, UGV xacro checked (#1 #2 #3 closed); the world and the ros2_control stack are written, their proofs pending. Phase 2: interfaces and the patrol action proven on the kinematic sim (#6 #9 closed); follower and geofence proofs in progress. Phase 3: planner and status loop written, model proofs wait for an API key in `.env`. See PLAN.md and the issues.
+Phase 1: Gazebo world with live lidar/camera/imu/navsat on the UGV (#1-#4 closed); ros2_control build in progress (#5). Phase 2: follower, geofence, patrol action, three vehicles proven on the kinematic sim (#6-#10 closed). Phase 3: planner tools proven over the debug topic; model proofs wait for ANTHROPIC_API_KEY in `.env` (#11-#14 open). See PLAN.md and the issues.
 
 ## Local settings
 
