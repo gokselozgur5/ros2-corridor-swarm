@@ -48,7 +48,7 @@ class Planner:
             model=self.model,
             max_tokens=4096,
             system=SYSTEM,
-            messages=messages,
+            messages=list(messages),
             tools=self.schemas,
             betas=[FALLBACK_BETA],
             fallbacks='default',
