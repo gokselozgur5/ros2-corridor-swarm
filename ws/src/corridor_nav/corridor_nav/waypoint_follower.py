@@ -2,7 +2,7 @@
 
 Runs inside a vehicle namespace. Position comes from `fix` (NavSatFix) through the
 corridor's LocalFrame, so the path and the vehicle share the map frame on every backend;
-`odom` only supplies the heading (issue #19). Subscribes `path`, publishes `cmd_vel` and
+`imu` supplies the heading (wheel odometry yaw drifts as soon as a skid-steer slips, issue #19). Subscribes `path`, publishes `cmd_vel` and
 `follower/status` (std_msgs/String: idle | following | arrived). An empty Path cancels.
 The controller itself is corridor_nav.pure_pursuit, tested without ROS.
 """
@@ -10,10 +10,10 @@ import math
 
 import rclpy
 from geometry_msgs.msg import Twist
-from nav_msgs.msg import Odometry, Path
+from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
-from sensor_msgs.msg import NavSatFix
+from sensor_msgs.msg import Imu, NavSatFix
 from std_msgs.msg import Float32, String
 
 from corridor_nav.geofence import LocalFrame, load_geojson_polygon
@@ -34,7 +34,7 @@ class WaypointFollower(Node):
         self.declare_parameter('rate_hz', 20.0)
         self.declare_parameter('pose_timeout_s', 1.0)
         self.declare_parameter('corridor_geojson', '')
-        self.declare_parameter('heading_offset_rad', 0.0)   # odom yaw of a vehicle facing east (map +x)
+        self.declare_parameter('heading_offset_rad', 0.0)   # added to the imu yaw; 0 when the imu reports ENU (east = 0)
 
         _, ring = load_geojson_polygon(self.get_parameter('corridor_geojson').value)
         self.frame = LocalFrame(*ring[0])
@@ -49,7 +49,7 @@ class WaypointFollower(Node):
         self.status_pub = self.create_publisher(String, 'follower/status', QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.xte_pub = self.create_publisher(Float32, 'follower/cross_track', 10)
         self.create_subscription(NavSatFix, 'fix', self.on_fix, 20)
-        self.create_subscription(Odometry, 'odom', self.on_odom, 20)
+        self.create_subscription(Imu, 'imu', self.on_imu, 20)
         self.create_subscription(Path, 'path', self.on_path, 10)
         self.timer = self.create_timer(1.0 / self.get_parameter('rate_hz').value, self.tick)
         self.status_pub.publish(String(data=self.status))
@@ -58,8 +58,8 @@ class WaypointFollower(Node):
         self.fix = (msg.latitude, msg.longitude)
         self.fix_stamp = self.get_clock().now()
 
-    def on_odom(self, msg):
-        self.heading = yaw_from_quaternion(msg.pose.pose.orientation)
+    def on_imu(self, msg):
+        self.heading = yaw_from_quaternion(msg.orientation)
 
     def on_path(self, msg):
         self.path = [(ps.pose.position.x, ps.pose.position.y) for ps in msg.poses]
