@@ -1,6 +1,6 @@
 """Kinematic unicycle driven by cmd_vel, for testing the autonomy layer without Gazebo.
 
-Publishes odom, fix and the map -> base_link tf like vehicle_sim, but the motion comes
+Publishes odom, fix, imu (orientation only) and the map -> base_link tf like vehicle_sim, but the motion comes
 from geometry_msgs/Twist on `cmd_vel` instead of a fixed route. Runs in a vehicle namespace.
 """
 import math
@@ -9,7 +9,7 @@ import rclpy
 from geometry_msgs.msg import TransformStamped, Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
-from sensor_msgs.msg import NavSatFix, NavSatStatus
+from sensor_msgs.msg import Imu, NavSatFix, NavSatStatus
 from tf2_ros import TransformBroadcaster
 
 EARTH_RADIUS_M = 6371008.8
@@ -40,6 +40,7 @@ class UnicycleSim(Node):
 
         self.odom_pub = self.create_publisher(Odometry, 'odom', 20)
         self.fix_pub = self.create_publisher(NavSatFix, 'fix', 10)
+        self.imu_pub = self.create_publisher(Imu, 'imu', 10)
         self.tf = TransformBroadcaster(self)
         self.create_subscription(Twist, 'cmd_vel', self.on_cmd, 10)
         self.dt = 1.0 / self.get_parameter('rate_hz').value
@@ -82,6 +83,14 @@ class UnicycleSim(Node):
         fix.latitude = self.lat0 + math.degrees(self.y / EARTH_RADIUS_M)
         fix.longitude = self.lon0 + math.degrees(self.x / (EARTH_RADIUS_M * self.cos_lat0))
         self.fix_pub.publish(fix)
+
+        imu = Imu()
+        imu.header.stamp = stamp
+        imu.header.frame_id = child
+        imu.orientation.z = qz
+        imu.orientation.w = qw
+        imu.angular_velocity.z = self.w
+        self.imu_pub.publish(imu)
 
         t = TransformStamped()
         t.header.stamp = stamp
