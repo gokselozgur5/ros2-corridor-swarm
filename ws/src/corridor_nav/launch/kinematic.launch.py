@@ -25,7 +25,7 @@ def launch_setup(context):
                  parameters=[{'origin_lat': 52.7000, 'origin_lon': -3.0000,
                               'start_x': 20.0 + 25.0 * (first - 1 + i), 'start_y': 20.0, 'child_frame_id': f'{v}/base_link'}]),
             Node(package='corridor_nav', executable='waypoint_follower', namespace=v, name='waypoint_follower',
-                 parameters=[{'speed_mps': speed, 'lookahead_m': lookahead, 'arrive_tolerance_m': 1.5}]),
+                 parameters=[{'speed_mps': speed, 'lookahead_m': lookahead, 'arrive_tolerance_m': 1.5, 'corridor_geojson': corridor}]),
             Node(package='corridor_nav', executable='patrol_server', namespace=v, name='patrol_server',
                  parameters=[{'corridor_geojson': corridor, 'vehicle': v, 'inset_m': 30.0 + 8.0 * i}]),
         ]
