@@ -37,6 +37,7 @@
         <gz_frame_id>${prefix}imu_link</gz_frame_id>
         <update_rate>100</update_rate>
         <always_on>true</always_on>
+        <imu><orientation_reference_frame><localization>ENU</localization></orientation_reference_frame></imu>
       </sensor>
     </gazebo>
     <gazebo reference="${prefix}gnss_link">
