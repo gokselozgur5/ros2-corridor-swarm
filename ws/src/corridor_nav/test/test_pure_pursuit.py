@@ -68,3 +68,19 @@ def test_target_behind_turns_at_full_rate():
     # Target 170 deg to the left: sin(170 deg) is small but the turn must not be.
     cmd = step(0.0, 0.0, 0.0, [(-10.0, 1.76), (-20.0, 3.5)], 1.0, 2.0, 0.5, max_angular=1.5)
     assert cmd.angular == 1.5
+
+
+def test_before_the_first_vertex_aims_at_the_route_start_not_the_first_leg_end():
+    # Spawn at (20, 20), route starts at (28, 28) and its first leg runs east to (173, 28). Off the path by
+    # more than the lookahead: the carrot is just past the start vertex, up-right, not 150 m east.
+    route = [(28.0, 28.0), (173.0, 28.0), (173.0, 173.0), (28.0, 173.0), (28.0, 28.0)]
+    cmd = step(20.0, 20.0, 0.0, route, 3.0, 4.0, 2.0)
+    assert cmd.angular > 0.5
+
+
+def test_beside_the_path_the_carrot_is_ahead_not_abeam():
+    # 6 m left of a straight leg (beyond the 4 m lookahead), heading along it: steer right and keep
+    # moving, instead of turning in place toward the point directly abeam.
+    cmd = step(50.0, 6.0, 0.0, [(0.0, 0.0), (100.0, 0.0)], 1.0, 4.0, 1.0)
+    assert cmd.angular < 0
+    assert cmd.linear > 0.3
