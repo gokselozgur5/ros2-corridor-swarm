@@ -79,6 +79,7 @@ class StatusLoop(Node):
             'calls': self.calls, 'input_tokens': self.in_tokens, 'output_tokens': self.out_tokens,
             'usd': round(cost, 5), 'usd_per_hour': round(cost / hours, 4)})))
         self.get_logger().info(f'summary: {text}')
+        self.get_logger().info(f'cost: calls={self.calls} in={self.in_tokens} out={self.out_tokens} usd={cost:.5f} usd_per_hour={cost / hours:.4f}')
 
 
 def main():
