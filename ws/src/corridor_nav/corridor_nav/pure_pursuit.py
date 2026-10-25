@@ -43,8 +43,9 @@ def closest_segment(x, y, path, start=0, window=None):
 def lookahead_point(x, y, path, start_index, lookahead):
     """First point at `lookahead` distance along the path from the closest segment.
 
-    When the vehicle is farther than `lookahead` from the path (it overshot a corner) there is no
-    intersection; then aim at the end of the closest segment, never at the end of the route."""
+    When the vehicle is farther than `lookahead` from the path (before the first vertex, or after
+    overshooting a corner) there is no intersection; then aim at the point `lookahead` ahead of the
+    vehicle's projection on the closest segment, clamped to that segment's end. Never the route's end."""
     for i in range(start_index, len(path) - 1):
         ax, ay = path[i]
         bx, by = path[i + 1]
@@ -59,7 +60,19 @@ def lookahead_point(x, y, path, start_index, lookahead):
         t = (-b + math.sqrt(disc)) / (2 * a)
         if 0.0 <= t <= 1.0:
             return (ax + t * dx, ay + t * dy), i
-    return path[start_index + 1], start_index
+    return carrot_on_segment(x, y, path, start_index, lookahead), start_index
+
+
+def carrot_on_segment(x, y, path, i, ahead):
+    ax, ay = path[i]
+    bx, by = path[i + 1]
+    dx, dy = bx - ax, by - ay
+    length = math.hypot(dx, dy)
+    if length == 0:
+        return path[i + 1]
+    t = max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / (length * length)))
+    t = min(1.0, t + ahead / length)
+    return ax + t * dx, ay + t * dy
 
 
 def step(x, y, yaw, path, speed, lookahead, arrive_tolerance, max_angular=1.5, min_segment=0, window=2):
