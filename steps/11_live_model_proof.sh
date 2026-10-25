@@ -17,16 +17,16 @@ timeout 200 ros2 topic echo /mission/llm_trace std_msgs/msg/String --field data 
 timeout 200 ros2 topic echo /mission/reply std_msgs/msg/String --field data > /tmp/reply_live.txt 2>/dev/null &
 timeout 200 ros2 topic echo /mission/summary_cost std_msgs/msg/String --field data > /tmp/cost_live.txt 2>/dev/null &
 sleep 2
-echo "--- #12 request: send v1 to patrol"
-ros2 topic pub --once /mission/request std_msgs/String "{data: 'send v1 to patrol the corridor, one lap'}" > /dev/null 2>&1
-for i in $(seq 1 60); do grep -q '"event": "reply"' /tmp/trace_live.txt 2>/dev/null && break; sleep 1; done
-grep -o '"name": "[a-z_]*"' /tmp/trace_live.txt | tr '\n' ' '; echo
-grep -q '"name": "patrol"' /tmp/trace_live.txt && grep -q '"accepted": true' /tmp/trace_live.txt && echo "PROOF 12 PASS" || echo "PROOF 12 FAIL"
 echo "--- #13 request: what does v1 see"
 ros2 topic pub --once /mission/request std_msgs/String "{data: 'what does v1 see right now? name the colours of any objects'}" > /dev/null 2>&1
-for i in $(seq 1 60); do [ "$(grep -c '"event": "reply"' /tmp/trace_live.txt 2>/dev/null)" -ge 2 ] && break; sleep 1; done
+for i in $(seq 1 60); do grep -q "\"event\": \"reply\"" /tmp/trace_live.txt 2>/dev/null && break; sleep 1; done
 tail -1 /tmp/reply_live.txt | grep -v -- --- | cut -c1-300
 grep -q '"name": "describe_scene"' /tmp/trace_live.txt && echo "PROOF 13 PASS if the reply above names what is in front of v1" || echo "PROOF 13 FAIL"
+echo "--- #12 request: send v1 to patrol"
+ros2 topic pub --once /mission/request std_msgs/String "{data: 'send v1 to patrol the corridor, one lap'}" > /dev/null 2>&1
+for i in $(seq 1 60); do [ "$(grep -c "\"event\": \"reply\"" /tmp/trace_live.txt 2>/dev/null)" -ge 2 ] && break; sleep 1; done
+grep -o '"name": "[a-z_]*"' /tmp/trace_live.txt | tr '\n' ' '; echo
+grep -q '"name": "patrol"' /tmp/trace_live.txt && grep -q '"accepted": true' /tmp/trace_live.txt && echo "PROOF 12 PASS" || echo "PROOF 12 FAIL"
 echo "--- #14 status loop cost (two ticks, from the node log)"
 sleep 65
 grep -o "cost: calls=.*" /tmp/mission_live.log | tail -1
