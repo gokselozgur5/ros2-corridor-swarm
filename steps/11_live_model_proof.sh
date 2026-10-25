@@ -10,7 +10,7 @@ cleanup
 # Gazebo backend so describe_scene has a real camera; follower + patrol server on top of it.
 ros2 launch corridor_gz sim.launch.py use_ros2_control:=true > /tmp/sim_live.log 2>&1 &
 sleep 20
-ros2 run corridor_nav waypoint_follower --ros-args -r __ns:=/v1 -p speed_mps:=2.0 -p lookahead_m:=3.0 > /tmp/follower_live.log 2>&1 &
+ros2 run corridor_nav waypoint_follower --ros-args -r __ns:=/v1 -p "corridor_geojson:=$(ros2 pkg prefix corridor_nav)/share/corridor_nav/config/corridor_demo.geojson" -p speed_mps:=2.0 -p lookahead_m:=3.0 > /tmp/follower_live.log 2>&1 &
 ros2 launch corridor_planner mission.launch.py status_loop:=true > /tmp/mission_live.log 2>&1 &
 sleep 8
 timeout 200 ros2 topic echo /mission/llm_trace std_msgs/msg/String --field data > /tmp/trace_live.txt 2>/dev/null &
