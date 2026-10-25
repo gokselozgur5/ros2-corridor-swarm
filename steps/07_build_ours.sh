@@ -6,7 +6,7 @@ echo "=== $(date -Is) start"
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
 vcs import ws/src < ws/deps.repos
-python3 -m pip install --user --break-system-packages -q anthropic 2>&1 | grep -v WARNING || true
+python3 -m pip install --user --break-system-packages -q anthropic brotli zstandard 2>&1 | grep -v WARNING || true   # pip brotli: noble python3-brotli breaks httpx2 decoding
 cd ws
 colcon build --symlink-install --packages-up-to xacro corridor_sim corridor_nav corridor_description corridor_gz corridor_planner \
   --cmake-args -DBUILD_TESTING=OFF
