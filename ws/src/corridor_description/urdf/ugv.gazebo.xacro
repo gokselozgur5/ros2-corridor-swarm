@@ -3,6 +3,20 @@
   <!-- Gazebo Harmonic sensors on the UGV mounts. Included by ugv.urdf.xacro when sim:=true.
        Topic names are gz-side; corridor_gz/config/bridge.yaml maps them to ROS. -->
   <xacro:macro name="ugv_gazebo" params="prefix ns">
+    <!-- Skid steer: full lateral grip on four wheels 0.8 m apart lets the vehicle turn at a quarter of
+         the commanded rate (measured 0.22 rad/s for 1.0). Low mu2 across the rolling direction lets the
+         wheels slide sideways as rubber on gravel does. -->
+    <xacro:macro name="wheel_friction" params="name">
+      <gazebo reference="${prefix}${name}_wheel">
+        <collision>
+          <surface><friction><ode><mu>1.0</mu><mu2>0.15</mu2><fdir1>1 0 0</fdir1></ode></friction></surface>
+        </collision>
+      </gazebo>
+    </xacro:macro>
+    <xacro:wheel_friction name="front_left"/>
+    <xacro:wheel_friction name="front_right"/>
+    <xacro:wheel_friction name="rear_left"/>
+    <xacro:wheel_friction name="rear_right"/>
     <gazebo reference="${prefix}lidar_link">
       <sensor name="lidar" type="gpu_lidar">
         <topic>${ns}/scan</topic>
