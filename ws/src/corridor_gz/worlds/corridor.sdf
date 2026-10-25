@@ -45,7 +45,10 @@
       <visual name="east"><pose>202 100 0.02 0 0 0</pose><geometry><box><size>0.5 200 0.04</size></box></geometry><material><ambient>1 0.6 0 1</ambient><diffuse>1 0.6 0 1</diffuse></material></visual>
     </link></model>
 
-    <!-- A few obstacles inside the corridor. -->
+    <!-- A few obstacles inside the corridor. The red crate sits 14 m in front of the v1 spawn (20,20) so describe_scene has something to name. -->
+    <model name="crate_front"><static>true</static><pose>34 21 0.75 0 0 0.2</pose><link name="link">
+      <collision name="c"><geometry><box><size>1.5 1.5 1.5</size></box></geometry></collision>
+      <visual name="v"><geometry><box><size>1.5 1.5 1.5</size></box></geometry><material><ambient>0.9 0.05 0.05 1</ambient><diffuse>0.9 0.05 0.05 1</diffuse></material></visual></link></model>
     <model name="crate_1"><static>true</static><pose>60 80 0.75 0 0 0.3</pose><link name="link">
       <collision name="c"><geometry><box><size>1.5 1.5 1.5</size></box></geometry></collision>
       <visual name="v"><geometry><box><size>1.5 1.5 1.5</size></box></geometry><material><ambient>0.8 0.1 0.1 1</ambient><diffuse>0.8 0.1 0.1 1</diffuse></material></visual></link></model>
