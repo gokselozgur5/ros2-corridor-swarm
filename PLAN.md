@@ -6,7 +6,9 @@ Tracked on GitHub as milestones (one per phase) and issues (one per step).
 
 ## Progress
 
-2026-10-24: Phase 1 (#1-#5) and Phase 2 (#6-#10) proven, see the closed issues for the proof outputs. Phase 3 is written; #12 and #13 are proven on the debug path (`steps/08_proofs.sh 12`, `steps/10_scene_proof.sh`), the model path runs with `steps/11_live_model_proof.sh` once `ANTHROPIC_API_KEY` is in `.env`. Found on the way: #19, the Gazebo backend's odom frame is not the map frame the patrol route uses (`steps/12_gazebo_patrol.sh` shows it); decided in the architecture review (ARCHITECTURE.md, open questions).
+2026-10-24: Phase 1 (#1-#5) and Phase 2 (#6-#10) proven, see the closed issues for the proof outputs. Phase 3 is written; #12 and #13 are proven on the debug path (`steps/08_proofs.sh 12`, `steps/10_scene_proof.sh`), the model path runs with `steps/11_live_model_proof.sh` once `ANTHROPIC_API_KEY` is in `.env`. Found on the way: #19, the Gazebo backend's odom frame is not the map frame the patrol route uses (`steps/12_gazebo_patrol.sh` shows it).
+
+2026-10-25: #12-#14 proven with the live model. #19 decided and fixed: the follower positions by `fix` and heads by `imu`; chasing the Gazebo lap also exposed two pure-pursuit faults on closed routes (start taken for the closing leg; off-path fallback aiming at the route end) and the skid steer's lateral grip. All four fixed with tests seen red first; `steps/12_gazebo_patrol.sh` is the proof.
 
 ## Phase 0: kinematic baseline (done, 2026-10-24)
 
