@@ -41,7 +41,10 @@ def closest_segment(x, y, path, start=0, window=None):
 
 
 def lookahead_point(x, y, path, start_index, lookahead):
-    """First point at `lookahead` distance along the path from the closest segment; the last point if none."""
+    """First point at `lookahead` distance along the path from the closest segment.
+
+    When the vehicle is farther than `lookahead` from the path (it overshot a corner) there is no
+    intersection; then aim at the end of the closest segment, never at the end of the route."""
     for i in range(start_index, len(path) - 1):
         ax, ay = path[i]
         bx, by = path[i + 1]
@@ -56,7 +59,7 @@ def lookahead_point(x, y, path, start_index, lookahead):
         t = (-b + math.sqrt(disc)) / (2 * a)
         if 0.0 <= t <= 1.0:
             return (ax + t * dx, ay + t * dy), i
-    return path[-1], len(path) - 2
+    return path[start_index + 1], start_index
 
 
 def step(x, y, yaw, path, speed, lookahead, arrive_tolerance, max_angular=1.5, min_segment=0, window=2):
@@ -71,8 +74,11 @@ def step(x, y, yaw, path, speed, lookahead, arrive_tolerance, max_angular=1.5, m
         return Command(0.0, 0.0, len(path) - 1, cross, True, seg)
     (tx, ty), idx = lookahead_point(x, y, path, seg, lookahead)
     heading_error = wrap(math.atan2(ty - y, tx - x) - yaw)
-    # curvature = 2 sin(alpha) / L ; angular = v * curvature
-    angular = speed * 2.0 * math.sin(heading_error) / lookahead
+    if abs(heading_error) > math.pi / 2:
+        angular = math.copysign(max_angular, heading_error)   # target behind: sin() would shrink the turn to nothing
+    else:
+        # curvature = 2 sin(alpha) / L ; angular = v * curvature
+        angular = speed * 2.0 * math.sin(heading_error) / lookahead
     angular = max(-max_angular, min(max_angular, angular))
     linear = speed * max(0.2, math.cos(heading_error))
     return Command(linear, angular, idx + 1, cross, False, seg)
