@@ -1,8 +1,10 @@
 """Pure-pursuit follower: nav_msgs/Path in, geometry_msgs/Twist out.
 
-Runs inside a vehicle namespace. Subscribes `odom` and `path`, publishes `cmd_vel`
-and `follower/status` (std_msgs/String: idle | following | arrived). An empty Path
-cancels. The controller itself is corridor_nav.pure_pursuit, tested without ROS.
+Runs inside a vehicle namespace. Position comes from `fix` (NavSatFix) through the
+corridor's LocalFrame, so the path and the vehicle share the map frame on every backend;
+`odom` only supplies the heading (issue #19). Subscribes `path`, publishes `cmd_vel` and
+`follower/status` (std_msgs/String: idle | following | arrived). An empty Path cancels.
+The controller itself is corridor_nav.pure_pursuit, tested without ROS.
 """
 import math
 
@@ -11,8 +13,11 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry, Path
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
+from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import Float32, String
 
+from corridor_nav.geofence import LocalFrame, load_geojson_polygon
+from corridor_nav.local_pose import pose_from_fix
 from corridor_nav.pure_pursuit import step
 
 
@@ -27,26 +32,34 @@ class WaypointFollower(Node):
         self.declare_parameter('lookahead_m', 4.0)
         self.declare_parameter('arrive_tolerance_m', 1.0)
         self.declare_parameter('rate_hz', 20.0)
-        self.declare_parameter('odom_timeout_s', 1.0)
+        self.declare_parameter('pose_timeout_s', 1.0)
+        self.declare_parameter('corridor_geojson', '')
+        self.declare_parameter('heading_offset_rad', 0.0)   # odom yaw of a vehicle facing east (map +x)
 
+        _, ring = load_geojson_polygon(self.get_parameter('corridor_geojson').value)
+        self.frame = LocalFrame(*ring[0])
         self.path = []
-        self.pose = None
-        self.pose_stamp = None
+        self.fix = None
+        self.fix_stamp = None
+        self.heading = None
         self.status = 'idle'
 
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         # Latched: patrol_server and the planner may start after us and need the current status, not the next change.
         self.status_pub = self.create_publisher(String, 'follower/status', QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self.xte_pub = self.create_publisher(Float32, 'follower/cross_track', 10)
+        self.create_subscription(NavSatFix, 'fix', self.on_fix, 20)
         self.create_subscription(Odometry, 'odom', self.on_odom, 20)
         self.create_subscription(Path, 'path', self.on_path, 10)
         self.timer = self.create_timer(1.0 / self.get_parameter('rate_hz').value, self.tick)
         self.status_pub.publish(String(data=self.status))
 
+    def on_fix(self, msg):
+        self.fix = (msg.latitude, msg.longitude)
+        self.fix_stamp = self.get_clock().now()
+
     def on_odom(self, msg):
-        p = msg.pose.pose
-        self.pose = (p.position.x, p.position.y, yaw_from_quaternion(p.orientation))
-        self.pose_stamp = self.get_clock().now()
+        self.heading = yaw_from_quaternion(msg.pose.pose.orientation)
 
     def on_path(self, msg):
         self.path = [(ps.pose.position.x, ps.pose.position.y) for ps in msg.poses]
@@ -63,14 +76,14 @@ class WaypointFollower(Node):
     def tick(self):
         if self.status != 'following':
             return
-        if self.pose is None:
+        if self.fix is None or self.heading is None:
             return
-        age = (self.get_clock().now() - self.pose_stamp).nanoseconds * 1e-9
-        if age > self.get_parameter('odom_timeout_s').value:
+        age = (self.get_clock().now() - self.fix_stamp).nanoseconds * 1e-9
+        if age > self.get_parameter('pose_timeout_s').value:
             self.cmd_pub.publish(Twist())
-            self.get_logger().warn('odom stale, holding', throttle_duration_sec=5.0)
+            self.get_logger().warn('fix stale, holding', throttle_duration_sec=5.0)
             return
-        x, y, yaw = self.pose
+        x, y, yaw = pose_from_fix(self.frame, *self.fix, self.heading, self.get_parameter('heading_offset_rad').value)
         cmd = step(x, y, yaw, self.path,
                    self.get_parameter('speed_mps').value,
                    self.get_parameter('lookahead_m').value,
