@@ -93,6 +93,9 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        node.cmd_pub.publish(Twist())
+        try:
+            node.cmd_pub.publish(Twist())
+        except Exception:
+            pass   # context already shut down on SIGINT
         node.destroy_node()
         rclpy.try_shutdown()
