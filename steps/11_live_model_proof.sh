@@ -13,9 +13,9 @@ sleep 20
 ros2 run corridor_nav waypoint_follower --ros-args -r __ns:=/v1 -p speed_mps:=2.0 -p lookahead_m:=3.0 > /tmp/follower_live.log 2>&1 &
 ros2 launch corridor_planner mission.launch.py status_loop:=true > /tmp/mission_live.log 2>&1 &
 sleep 8
-timeout 150 ros2 topic echo /mission/llm_trace --field data > /tmp/trace_live.txt 2>/dev/null &
-timeout 150 ros2 topic echo /mission/reply --field data > /tmp/reply_live.txt 2>/dev/null &
-timeout 150 ros2 topic echo /mission/summary_cost --field data > /tmp/cost_live.txt 2>/dev/null &
+timeout 200 ros2 topic echo /mission/llm_trace std_msgs/msg/String --field data > /tmp/trace_live.txt 2>/dev/null &
+timeout 200 ros2 topic echo /mission/reply std_msgs/msg/String --field data > /tmp/reply_live.txt 2>/dev/null &
+timeout 200 ros2 topic echo /mission/summary_cost std_msgs/msg/String --field data > /tmp/cost_live.txt 2>/dev/null &
 sleep 2
 echo "--- #12 request: send v1 to patrol"
 ros2 topic pub --once /mission/request std_msgs/String "{data: 'send v1 to patrol the corridor, one lap'}" > /dev/null 2>&1
