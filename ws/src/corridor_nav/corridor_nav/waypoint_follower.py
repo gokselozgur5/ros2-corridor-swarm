@@ -39,6 +39,7 @@ class WaypointFollower(Node):
         _, ring = load_geojson_polygon(self.get_parameter('corridor_geojson').value)
         self.frame = LocalFrame(*ring[0])
         self.path = []
+        self.segment = 0
         self.fix = None
         self.fix_stamp = None
         self.heading = None
@@ -63,6 +64,7 @@ class WaypointFollower(Node):
 
     def on_path(self, msg):
         self.path = [(ps.pose.position.x, ps.pose.position.y) for ps in msg.poses]
+        self.segment = 0
         self.set_status('following' if len(self.path) >= 2 else 'idle')
         if len(self.path) < 2:
             self.cmd_pub.publish(Twist())
@@ -87,7 +89,9 @@ class WaypointFollower(Node):
         cmd = step(x, y, yaw, self.path,
                    self.get_parameter('speed_mps').value,
                    self.get_parameter('lookahead_m').value,
-                   self.get_parameter('arrive_tolerance_m').value)
+                   self.get_parameter('arrive_tolerance_m').value,
+                   min_segment=self.segment)
+        self.segment = cmd.segment
         twist = Twist()
         twist.linear.x = cmd.linear
         twist.angular.z = cmd.angular
