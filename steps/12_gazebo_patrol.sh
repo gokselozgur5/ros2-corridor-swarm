@@ -8,7 +8,7 @@ cleanup() { pkill -f "ros2 launch corridor" 2>/dev/null; pkill -f "corridor_nav/
 cleanup
 ros2 launch corridor_gz sim.launch.py use_ros2_control:=true > /tmp/sim_patrol.log 2>&1 &
 sleep 20
-ros2 run corridor_nav waypoint_follower --ros-args -r __ns:=/v1 -p speed_mps:=3.0 -p lookahead_m:=4.0 -p arrive_tolerance_m:=2.0 -p use_sim_time:=true > /tmp/follower_patrol.log 2>&1 &
+ros2 run corridor_nav waypoint_follower --ros-args -r __ns:=/v1 -p "corridor_geojson:=$(ros2 pkg prefix corridor_nav)/share/corridor_nav/config/corridor_demo.geojson" -p speed_mps:=3.0 -p lookahead_m:=4.0 -p arrive_tolerance_m:=2.0 -p use_sim_time:=true > /tmp/follower_patrol.log 2>&1 &
 ros2 run corridor_nav patrol_server --ros-args -r __ns:=/v1 -p "corridor_geojson:=$(ros2 pkg prefix corridor_nav)/share/corridor_nav/config/corridor_demo.geojson" -p vehicle:=v1 -p inset_m:=40.0 -p use_sim_time:=true > /tmp/patrol_gz.log 2>&1 &
 sleep 4
 timeout 420 ros2 topic echo /v1/follower/cross_track --field data > /tmp/xte_gz.txt 2>/dev/null &
