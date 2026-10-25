@@ -27,8 +27,8 @@ ros2 topic pub --once /mission/request std_msgs/String "{data: 'what does v1 see
 for i in $(seq 1 60); do [ "$(grep -c '"event": "reply"' /tmp/trace_live.txt 2>/dev/null)" -ge 2 ] && break; sleep 1; done
 tail -1 /tmp/reply_live.txt | grep -v -- --- | cut -c1-300
 grep -q '"name": "describe_scene"' /tmp/trace_live.txt && echo "PROOF 13 PASS if the reply above names what is in front of v1" || echo "PROOF 13 FAIL"
-echo "--- #14 status loop cost (two ticks)"
+echo "--- #14 status loop cost (two ticks, from the node log)"
 sleep 65
-tail -1 /tmp/cost_live.txt | grep -v -- ---
+grep -o "cost: calls=.*" /tmp/mission_live.log | tail -1
 cleanup
 echo "=== $(date -Is) done"
