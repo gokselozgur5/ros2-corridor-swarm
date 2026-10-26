@@ -86,11 +86,17 @@ class CotBridge(Node):
                 start = xml.rfind(b'<event')
                 if start < 0:
                     continue
-                marker = parse_marker(xml[start:].decode(errors='replace') + '</event>')
-                if marker and not marker['uid'].startswith('corridor-'):
-                    text = f"send the nearest vehicle to marker {marker['callsign'] or marker['uid']} at {marker['lat']:.6f}, {marker['lon']:.6f}"
-                    self.request_pub.publish(String(data=text))
-                    self.get_logger().info(f'marker -> request: {text}')
+                try:
+                    self.on_event(xml[start:].decode(errors='replace') + '</event>')
+                except Exception as exc:
+                    self.get_logger().warn(f'CoT event dropped: {exc!r}')
+
+    def on_event(self, xml):
+        marker = parse_marker(xml)
+        if marker and not marker['uid'].startswith('corridor-'):
+            text = f"send the nearest vehicle to marker {marker['callsign'] or marker['uid']} at {marker['lat']:.6f}, {marker['lon']:.6f}"
+            self.request_pub.publish(String(data=text))
+            self.get_logger().info(f'marker -> request: {text}')
 
 
 def main():
