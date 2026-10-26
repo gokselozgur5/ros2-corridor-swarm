@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# End to end on physics: Gazebo + ros2_control diff_drive + follower + patrol action, one lap. Not a PLAN proof, a sanity run.
+# End to end on physics: Gazebo + ros2_control diff_drive + follower + patrol action, one lap. The #19 proof PLAN.md names:
+# PASS only when the patrol result is done and the reported distance is a plausible lap (> 380 m).
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
 LOG=~/deletdis/log/12_gazebo_patrol.log; exec > >(tee -a "$LOG") 2>&1
