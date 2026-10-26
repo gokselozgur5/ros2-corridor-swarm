@@ -15,6 +15,8 @@ import rclpy
 
 if getattr(rclpy, 'STUB', False):
     pytest.skip('needs ROS (run on Thor)', allow_module_level=True)
+if __import__('os').environ.get('ROS_DOMAIN_ID', '0') == '42':
+    pytest.skip('publishes a fake v1 on live topics: run with a private domain, e.g. ROS_DOMAIN_ID=77, never on the demo domain 42', allow_module_level=True)
 
 from geometry_msgs.msg import PoseStamped  # noqa: E402
 from nav_msgs.msg import Odometry, Path  # noqa: E402
