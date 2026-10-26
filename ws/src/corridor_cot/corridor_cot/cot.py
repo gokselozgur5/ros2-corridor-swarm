@@ -1,6 +1,7 @@
 """Cursor-on-Target XML, built and parsed without pytak so it is unit-testable and dependency-free."""
 import math
 import xml.etree.ElementTree as ET
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 
 ISO = '%Y-%m-%dT%H:%M:%S.%fZ'
@@ -105,18 +106,27 @@ def _metres(a, b):
 class MarkerGate:
     """Decides which marker events become mission requests: a uid passes the first time and again only once it
     has moved by `move_m`. ATAK re-sends the same uid on a rename after the auto callsign, on a refresh and
-    through a second client; each of those cost a planning run or was dropped by the planner's busy guard."""
+    through a second client; each of those cost a planning run or was dropped by the planner's busy guard.
+    Remembers at most `capacity` uids (the stream is unauthenticated: unique uids must not grow memory without
+    bound); a marker without a uid has nothing to deduplicate on and always passes."""
 
-    def __init__(self, move_m=5.0):
+    def __init__(self, move_m=5.0, capacity=256):
         self.move_m = move_m
-        self.sent = {}
+        self.capacity = capacity
+        self.sent = OrderedDict()
 
     def admit(self, marker):
+        uid = marker['uid']
+        if not uid:
+            return True
         here = (marker['lat'], marker['lon'])
-        last = self.sent.get(marker['uid'])
+        last = self.sent.get(uid)
         if last is not None and _metres(last, here) < self.move_m:
             return False
-        self.sent[marker['uid']] = here
+        self.sent[uid] = here
+        self.sent.move_to_end(uid)
+        while len(self.sent) > self.capacity:
+            self.sent.popitem(last=False)
         return True
 
 
