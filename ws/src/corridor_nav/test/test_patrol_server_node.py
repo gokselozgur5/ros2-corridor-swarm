@@ -6,6 +6,7 @@ node in a private namespace per test. Needs the built workspace for corridor_msg
 import itertools
 import math
 import threading
+import time
 
 import pytest
 
@@ -15,6 +16,7 @@ if not ROS:
     pytest.skip('needs ROS 2: run on Thor', allow_module_level=True)
 
 from action_msgs.msg import GoalStatus  # noqa: E402
+from geometry_msgs.msg import PoseStamped  # noqa: E402
 from nav_msgs.msg import Path  # noqa: E402
 from rclpy.action import ActionClient  # noqa: E402
 from rclpy.executors import MultiThreadedExecutor  # noqa: E402
@@ -25,6 +27,7 @@ from sensor_msgs.msg import NavSatFix  # noqa: E402
 from std_msgs.msg import Header, String  # noqa: E402
 
 from corridor_msgs.action import Patrol  # noqa: E402
+from corridor_msgs.msg import GeofenceEvent  # noqa: E402
 from corridor_nav.patrol_server import PatrolServer, inset_polygon  # noqa: E402
 
 pytestmark = pytest.mark.ros
@@ -67,6 +70,7 @@ class Rig:
         self.client = ActionClient(self.node, Patrol, 'patrol')
         self.fix_pub = self.node.create_publisher(NavSatFix, 'fix', 10)
         self.path_pub = self.node.create_publisher(Path, 'path', 10)
+        self.event_pub = self.node.create_publisher(GeofenceEvent, '/fleet/geofence_events', 10)
         self.goals = []
         self.executor = MultiThreadedExecutor(num_threads=6)
         for n in (self.server, self.follower, self.node):
@@ -105,6 +109,35 @@ class Rig:
     def routes(self):
         return [p for p in self.follower.paths if len(p.poses) >= 2]
 
+    def empties(self):
+        return [p for p in self.follower.paths if not p.poses]
+
+    def foreign_path(self, points, sec=123):
+        """A Path from another publisher (the planner's goto, or its stop when empty)."""
+        msg = Path()
+        msg.header.frame_id = 'map'
+        msg.header.stamp.sec = sec
+        for x, y in points:
+            ps = PoseStamped()
+            ps.header = msg.header
+            ps.pose.position.x, ps.pose.position.y = float(x), float(y)
+            ps.pose.orientation.w = 1.0
+            msg.poses.append(ps)
+        n = len(self.follower.paths)
+        self.path_pub.publish(msg)
+        assert until(lambda: len(self.follower.paths) > n, timeout=3.0), 'foreign Path not delivered'
+
+    def breach(self):
+        assert until(lambda: self.event_pub.get_subscription_count() > 0, timeout=3.0), 'server not subscribed to events'
+        self.event_pub.publish(GeofenceEvent(vehicle='v1', corridor_id='demo', type=GeofenceEvent.EXIT, distance_m=-3.0))
+
+    def patrolling(self, laps=1):
+        """A goal under way: route delivered to the follower, which reports following it."""
+        self.place(20.0, 20.0)
+        gh = self.goal(laps=laps)
+        assert until(self.routes, timeout=5.0), 'no route reached the follower'
+        return gh
+
     def close(self):
         for gh in self.goals:
             self.cancel(gh)
@@ -139,3 +172,54 @@ def test_lap_starts_at_the_vertex_nearest_the_fix(rig):
     assert vertex(rig.routes()[0], 0) == pytest.approx(nearest)
     rig.cancel(gh)
     assert rig.result(gh).status == GoalStatus.STATUS_CANCELED
+
+
+# ----- nav-mission-2: only a status about the server's own route means anything -----------------
+
+def test_own_arrival_completes_the_lap(rig):
+    gh = rig.patrolling(laps=1)
+    rig.follower.report('arrived')
+    res = rig.result(gh)
+    assert res.status == GoalStatus.STATUS_SUCCEEDED
+    assert (res.result.result, res.result.laps_done) == ('done', 1)
+
+
+def test_foreign_arrival_is_not_a_lap_and_does_not_resend_the_route(rig):
+    gh = rig.patrolling(laps=2)
+    rig.foreign_path([(20.0, 20.0), (60.0, 60.0)])   # the planner's goto took the follower
+    rig.follower.report('arrived')                      # the goto arrives
+    res = rig.result(gh)
+    assert (res.result.result, res.result.laps_done) == ('preempted', 0)
+    time.sleep(0.7)
+    assert len(rig.routes()) == 2, 'patrol route re-sent over the goto'
+
+
+def test_foreign_empty_path_ends_the_goal_as_preempted_not_done(rig):
+    gh = rig.patrolling(laps=1)
+    rig.foreign_path([], sec=0)   # wasd, clicked_goal or a planner stop on a goal it does not track
+    res = rig.result(gh)
+    assert res.status == GoalStatus.STATUS_ABORTED and res.result.result == 'preempted'
+
+
+def test_geofence_exit_clears_the_route_when_the_monitor_does_not(rig):
+    gh = rig.patrolling(laps=0)
+    rig.breach()   # cancel_on_exit false: no empty Path from the monitor
+    res = rig.result(gh)
+    assert res.status == GoalStatus.STATUS_ABORTED and res.result.result == 'geofence'
+    assert until(rig.empties, timeout=3.0), 'the vehicle keeps driving the lap outside the corridor'
+
+
+def test_geofence_exit_is_geofence_even_when_the_monitor_stopped_the_follower_first(rig):
+    gh = rig.patrolling(laps=0)
+    rig.breach()
+    rig.foreign_path([], sec=0)   # the monitor's own empty Path, right after its event
+    assert rig.result(gh).result.result == 'geofence'
+
+
+def test_cancel_does_not_clear_a_route_the_server_no_longer_owns(rig):
+    gh = rig.patrolling(laps=0)
+    rig.foreign_path([(20.0, 20.0), (60.0, 60.0)])   # a goto replaced the patrol route
+    rig.cancel(gh)
+    rig.result(gh)
+    time.sleep(0.7)
+    assert rig.empties() == [], 'cancel killed the goto with an empty Path'
