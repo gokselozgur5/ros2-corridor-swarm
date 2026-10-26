@@ -14,7 +14,7 @@ import pytest
 
 try:
     import rclpy  # noqa: F401
-    ROS = True
+    ROS = hasattr(rclpy, '__file__')   # a stand-in installed by another package's conftest has no file
 except ImportError:
     ROS = False
 
