@@ -4,7 +4,8 @@ cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
 LOG=~/deletdis/log/12_gazebo_patrol.log; exec > >(tee -a "$LOG") 2>&1
 echo "=== $(date -Is) gazebo patrol"
-cleanup() { pkill -f "ros2 launch corridor" 2>/dev/null; pkill -f "corridor_nav/lib" 2>/dev/null; pkill -f "gz sim -s" 2>/dev/null; pkill -f parameter_bridge 2>/dev/null; pkill -f robot_state_publisher 2>/dev/null; pkill -f "ros2 topic echo" 2>/dev/null; sleep 1; }
+cleanup() { pkill -f "ros2 launch corridor" 2>/dev/null; pkill -f "corridor_nav/lib" 2>/dev/null; pkill -f "gz sim -s" 2>/dev/null; pkill -f parameter_bridge 2>/dev/null; pkill -f robot_state_publisher 2>/dev/null; pkill -f "ros2 topic echo" 2>/dev/null; pkill -f "action send_goal" 2>/dev/null; sleep 1; }
+trap cleanup EXIT
 cleanup
 ros2 launch corridor_gz sim.launch.py use_ros2_control:=true > /tmp/sim_patrol.log 2>&1 &
 sleep 20
@@ -16,7 +17,6 @@ timeout 420 ros2 action send_goal --feedback /v1/patrol corridor_msgs/action/Pat
 grep -c "lap_progress" /tmp/goal_gz.txt | sed 's/^/feedback messages: /'
 grep -A4 "^Result" /tmp/goal_gz.txt
 awk 'function abs(v){return v<0?-v:v} /^-?[0-9]/{if(abs($1)>m)m=abs($1); n++} END{printf "cross-track samples=%d max_abs=%.2f m\n", n, m}' /tmp/xte_gz.txt
-grep -q "result: done" /tmp/goal_gz.txt && echo "GAZEBO PATROL PASS" || echo "GAZEBO PATROL FAIL"
 d=$(grep -o "distance_m: [0-9.]*" /tmp/goal_gz.txt | tail -1 | awk '{print $2}')
 grep -q "result: done" /tmp/goal_gz.txt && awk -v d="$d" 'BEGIN{exit !(d>380)}' && echo "GAZEBO PATROL PASS" || echo "GAZEBO PATROL FAIL (distance ${d:-none} m, a lap is about 570 m)"
 echo "=== $(date -Is) done"
