@@ -3,8 +3,9 @@
 Every vehicle's fix/odom -> one PLI event per `period_s` over TCP to the TAK server (FTS_HOST:8087,
 plain CoT, no TLS); a vehicle whose fix is older than `fix_timeout_s` is left out, so its icon goes stale
 in ATAK. Events from the server that are markers -> std_msgs/String on /mission/request
-("send the nearest vehicle to <callsign> at lat, lon"), so the planner can act on them. Reconnects on
-any socket error; never raises out of a callback."""
+("send the nearest vehicle to <callsign> at lat, lon"), so the planner can act on them; one request per
+placement (a uid re-sent at the same spot is a rename or a refresh, not a new order), none for a marker
+already stale. Reconnects on any socket error; never raises out of a callback."""
 import os
 import socket
 import threading
@@ -15,7 +16,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from std_msgs.msg import String
 
-from corridor_cot.cot import course_from_quaternion, parse_marker, pli_payload
+from corridor_cot.cot import MarkerGate, course_from_quaternion, parse_marker, pli_payload
 
 
 class CotBridge(Node):
@@ -26,7 +27,9 @@ class CotBridge(Node):
         self.declare_parameter('port', 8087)
         self.declare_parameter('period_s', 2.0)
         self.declare_parameter('fix_timeout_s', 5.0)
+        self.declare_parameter('marker_move_m', 5.0)
         self.declare_parameter('team', 'Cyan')
+        self.gate = MarkerGate(self.get_parameter('marker_move_m').value)
         self.state = {v: {} for v in self.get_parameter('vehicles').value}
         for v in self.state:
             self.create_subscription(NavSatFix, f'/{v}/fix', lambda m, v=v: self.on_fix(v, m), 10)
@@ -98,7 +101,7 @@ class CotBridge(Node):
 
     def on_event(self, xml):
         marker = parse_marker(xml)
-        if marker and not marker['uid'].startswith('corridor-'):
+        if marker and not marker['uid'].startswith('corridor-') and self.gate.admit(marker):
             text = f"send the nearest vehicle to marker {marker['callsign'] or marker['uid']} at {marker['lat']:.6f}, {marker['lon']:.6f}"
             self.request_pub.publish(String(data=text))
             self.get_logger().info(f'marker -> request: {text}')
