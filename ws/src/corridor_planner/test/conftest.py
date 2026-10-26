@@ -9,7 +9,11 @@ import types
 
 try:
     import rclpy  # noqa: F401
+    _REAL_ROS = hasattr(rclpy, '__file__')   # a stand-in installed by another package's conftest has no file
 except ImportError:
+    _REAL_ROS = False
+
+if not _REAL_ROS:
     class _Msg:
         FIELDS = {}
 
