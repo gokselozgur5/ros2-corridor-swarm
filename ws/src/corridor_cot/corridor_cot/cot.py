@@ -86,6 +86,30 @@ def parse_marker(xml_text, now=None):
             'lat': lat, 'lon': lon, 'type': cot_type}
 
 
+def _metres(a, b):
+    """Flat-earth distance between two (lat, lon) pairs; good to a few percent over the tens of metres it is used for."""
+    k = 111320.0
+    return math.hypot((b[0] - a[0]) * k, (b[1] - a[1]) * k * math.cos(math.radians((a[0] + b[0]) / 2.0)))
+
+
+class MarkerGate:
+    """Decides which marker events become mission requests: a uid passes the first time and again only once it
+    has moved by `move_m`. ATAK re-sends the same uid on a rename after the auto callsign, on a refresh and
+    through a second client; each of those cost a planning run or was dropped by the planner's busy guard."""
+
+    def __init__(self, move_m=5.0):
+        self.move_m = move_m
+        self.sent = {}
+
+    def admit(self, marker):
+        here = (marker['lat'], marker['lon'])
+        last = self.sent.get(marker['uid'])
+        if last is not None and _metres(last, here) < self.move_m:
+            return False
+        self.sent[marker['uid']] = here
+        return True
+
+
 def course_from_quaternion(z, w):
     """ENU yaw (quaternion z,w) -> compass course in degrees, 0 = north, clockwise."""
     yaw = math.degrees(2.0 * math.atan2(z, w))

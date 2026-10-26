@@ -162,3 +162,21 @@ def test_fix_without_a_fix_status_is_ignored(bridge):
     bridge.send_pli()
     assert sock.sent == []
     assert deliver_fix(bridge, NavSatStatus.STATUS_FIX)  # the same path delivers once the status says fix
+
+
+# ----- cot-4: one request per placement ------------------------------------------------------------
+
+def test_same_marker_twice_is_one_request_and_a_move_is_another(bridge):
+    same = marker_xml('atak-1', 52.7010, -2.9985, 'RALLY1')
+    moved = marker_xml('atak-1', 52.7020, -2.9985, 'RALLY1')  # about 110 m north
+    feed(bridge, [same, same, marker_xml('atak-1', 52.7010, -2.9985, 'RALLY'), moved])
+    assert wait_for(lambda: len(bridge.requests.lines) == 2), bridge.requests.lines
+    time.sleep(0.5)
+    assert len(bridge.requests.lines) == 2, bridge.requests.lines
+    assert '52.701000' in bridge.requests.lines[0] and '52.702000' in bridge.requests.lines[1]
+
+
+def test_stale_marker_is_not_a_request(bridge):
+    feed(bridge, [marker_xml('atak-old', 52.7010, -2.9985, 'OLD', stale_min=-5), marker_xml('atak-3', 52.7010, -2.9985, 'RALLY3')])
+    assert wait_for(lambda: len(bridge.requests.lines) == 1), bridge.log.lines
+    assert 'RALLY3' in bridge.requests.lines[0]

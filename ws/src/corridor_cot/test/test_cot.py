@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-from corridor_cot.cot import course_from_quaternion, parse_marker, pli_event, pli_payload
+from corridor_cot.cot import MarkerGate, course_from_quaternion, parse_marker, pli_event, pli_payload
 
 
 def test_pli_event_shape():
@@ -70,6 +70,20 @@ def test_parse_marker_drops_a_marker_whose_stale_time_has_passed():
     assert parse_marker(_marker(point, stale='2026-10-24T15:00:01.000Z'), now=now)['uid'] == 'm'
     assert parse_marker(_marker(point, stale='garbage'), now=now)['uid'] == 'm'  # unreadable stale: no expiry known
     assert parse_marker(_marker(point), now=now)['uid'] == 'm'
+
+
+def test_marker_gate_passes_a_placement_once_and_again_only_when_moved():
+    # cot-4: ATAK re-sends the same uid on rename, refresh or relay; only a new placement or a real move is a request
+    gate = MarkerGate(move_m=5.0)
+    m = {'uid': 'atak-1', 'callsign': 'RALLY1', 'lat': 52.7010, 'lon': -2.9985, 'type': 'b-m-p-w'}
+    north = 1.0 / 111320.0  # degrees of latitude per metre
+    assert gate.admit(m)
+    assert not gate.admit(m)                                    # identical re-send
+    assert not gate.admit(dict(m, callsign='RALLY'))            # renamed after the auto callsign, same spot
+    assert not gate.admit(dict(m, lat=m['lat'] + 2 * north))    # 2 m: jitter, not a move
+    assert gate.admit(dict(m, lat=m['lat'] + 20 * north))       # 20 m north: moved, dispatch again
+    assert not gate.admit(dict(m, lat=m['lat'] + 20 * north))   # the new spot is now the known one
+    assert gate.admit(dict(m, uid='atak-2'))                    # a second marker on the same spot is its own placement
 
 
 def test_course_from_quaternion():
