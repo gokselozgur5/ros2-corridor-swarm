@@ -37,6 +37,9 @@ def ros():
     """One rclpy context for the whole session (the Thor node tests)."""
     if not ROS:
         pytest.skip('needs ROS 2')
+    import os
+    if os.environ.get('ROS_DOMAIN_ID', '0') == '42':
+        pytest.skip('the node tests publish geofence events and Paths for v1 on live topics: run with a private domain, e.g. ROS_DOMAIN_ID=77, never on the demo domain 42')
     import rclpy
     rclpy.init(args=[])   # not pytest's argv; the domain comes from ROS_DOMAIN_ID
     yield
