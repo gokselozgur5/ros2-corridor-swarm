@@ -1,5 +1,6 @@
 """The planner's tool methods against fake ROS objects (ros_fakes.py). Runs without ROS through the
 stand-ins in conftest.py, and against the real message classes on Thor."""
+import math
 import pathlib
 import time
 
@@ -83,3 +84,81 @@ def test_stop_goal_reports_which_wait_timed_out():
     assert mp.stop_goal(FakeGoalHandle(log, exit_delay_s=0.05), timeout_s=1.0) == 'finished'
     assert mp.stop_goal(FakeGoalHandle(log, exit_delay_s=None, ack_delay_s=None), timeout_s=0.2) == 'cancel_timeout'
     assert mp.stop_goal(FakeGoalHandle(log, exit_delay_s=None), timeout_s=0.2) == 'result_timeout'
+
+
+# ----- planner-3: the goto Path starts at the fix in the corridor frame, never at odom ------------
+
+def fix_at(frame, x, y):
+    lat, lon = frame.to_latlon(x, y)
+    return NavSatFix(latitude=lat, longitude=lon)
+
+
+def test_start_xy_is_the_fix_in_the_corridor_frame():
+    frame = LocalFrame(52.7, -3.0)
+    x, y = mp.start_xy(frame, fix_at(frame, 20.0, 70.0))
+    assert math.isclose(x, 20.0, abs_tol=1e-6) and math.isclose(y, 70.0, abs_tol=1e-6)
+    assert mp.start_xy(frame, None) is None
+
+
+def test_goto_path_starts_at_the_fix_not_at_odom():
+    # Gazebo: v1 spawns at map (20, 20) while its odom starts at (0, 0).
+    log = []
+    node = planner(log)
+    v = node.vehicles['v1']
+    v.fix = fix_at(node.frame, 20.0, 20.0)
+    v.odom = Odometry()
+    lat, lon = node.frame.to_latlon(100.0, 20.0)
+    out = node.t_goto('v1', lat, lon)
+    assert out['accepted'] is True and (out['x'], out['y']) == (100.0, 20.0)
+    path = node.path_pubs['v1'].published[-1]
+    assert path.header.frame_id == 'map' and len(path.poses) == 2
+    start, goal = path.poses[0].pose.position, path.poses[1].pose.position
+    assert math.isclose(start.x, 20.0, abs_tol=1e-6) and math.isclose(start.y, 20.0, abs_tol=1e-6), (start.x, start.y)
+    assert math.isclose(goal.x, 100.0, abs_tol=1e-6) and math.isclose(goal.y, 20.0, abs_tol=1e-6)
+    assert v.mode == 'goto'
+
+
+def test_goto_without_a_fix_is_refused_and_cancels_nothing():
+    log = []
+    node = planner(log)
+    v = node.vehicles['v1']
+    v.odom = Odometry()
+    v.goal = FakeGoalHandle(log)
+    v.mode = 'patrol'
+    lat, lon = node.frame.to_latlon(100.0, 20.0)
+    out = node.t_goto('v1', lat, lon)
+    assert out['accepted'] is False and 'fix' in out['reason'], out
+    assert log == [] and node.path_pubs['v1'].published == []
+    assert v.goal is not None and v.mode == 'patrol'
+
+
+def test_goto_outside_the_corridor_is_refused_before_anything_is_stopped():
+    log = []
+    node = planner(log)
+    v = node.vehicles['v1']
+    v.fix = fix_at(node.frame, 20.0, 20.0)
+    v.goal = FakeGoalHandle(log)
+    lat, lon = node.frame.to_latlon(20.0, -60.0)
+    out = node.t_goto('v1', lat, lon)
+    assert out['accepted'] is False and log == [] and v.goal is not None
+
+
+def test_summary_xy_come_from_the_fix():
+    node = planner([])
+    v = node.vehicles['v1']
+    v.fix = fix_at(node.frame, 20.0, 20.0)
+    v.odom = Odometry()
+    v.odom.twist.twist.linear.x = 1.5
+    d = node._summary('v1')
+    assert (d['x'], d['y']) == (20.0, 20.0), d
+    assert d['speed_mps'] == 1.5 and d['inside_corridor'] is True and d['edge_distance_m'] == 20.0
+
+
+def test_summary_without_a_corridor_has_no_xy():
+    node = planner([])
+    node.frame = node.poly = None
+    v = node.vehicles['v1']
+    v.fix = NavSatFix(latitude=52.7001, longitude=-2.9997)
+    v.odom = Odometry()
+    d = node._summary('v1')
+    assert 'x' not in d and 'y' not in d and d['lat'] == 52.7001
