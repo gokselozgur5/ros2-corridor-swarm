@@ -63,6 +63,7 @@ class Planner:
 
     def run(self, text):
         out = Outcome()
+        start = len(self.messages)  # a failed exchange is dropped whole: an assistant tool_use left without its tool_result is a 400 on every later request
         self.messages.append({'role': 'user', 'content': text})
         self.trace.append({'event': 'request', 'text': text})
         for _ in range(self.max_turns):
@@ -72,7 +73,7 @@ class Planner:
             except Exception as exc:  # the SDK's typed errors; keep the node alive
                 out.error = f'{type(exc).__name__}: {exc}'
                 self.trace.append({'event': 'error', 'error': out.error})
-                self.messages.pop()  # the request that failed; keep history consistent
+                del self.messages[start:]
                 return out
             usage = getattr(resp, 'usage', None)
             if usage is not None:
@@ -83,7 +84,7 @@ class Planner:
                 out.refused = True
                 out.category = (getattr(details, 'category', None) or '') if details else ''
                 self.trace.append({'event': 'refusal', 'category': out.category, 'model': getattr(resp, 'model', '')})
-                self.messages.pop()
+                del self.messages[start:]
                 return out
             self.messages.append({'role': 'assistant', 'content': resp.content})
             texts = [b.text for b in resp.content if getattr(b, 'type', '') == 'text']
