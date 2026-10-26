@@ -1,10 +1,16 @@
 import math
 
+import pytest
+
 from corridor_nav.geofence import LocalFrame, load_geojson_polygon, point_in_polygon, signed_distance
 
 SQUARE = [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0)]
 GEOJSON = '''{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"id":"c1"},
 "geometry":{"type":"Polygon","coordinates":[[[-3.0,52.7],[-2.6,52.6],[-2.0,52.4],[-3.0,52.7]]]}}]}'''
+
+
+def polygon(ring):
+    return '{"type":"Polygon","coordinates":[%s]}' % ring
 
 
 def test_inside_and_outside():
@@ -31,6 +37,49 @@ def test_geojson_lonlat_order_and_closing_vertex():
     assert cid == 'c1'
     assert len(ring) == 3
     assert ring[0] == (52.7, -3.0)  # (lat, lon)
+
+
+# nav-mission-5: RFC 7946 positions may carry an altitude; KML->GeoJSON exports always do.
+def test_geojson_position_with_altitude():
+    _, ring = load_geojson_polygon(polygon('[[-3.0,52.7,0],[-2.997,52.7,0],[-2.997,52.7018,0],[-3.0,52.7,0]]'))
+    assert ring == [(52.7, -3.0), (52.7, -2.997), (52.7018, -2.997)]
+
+
+def test_geojson_closing_vertex_compared_on_lonlat_only():
+    # Same lon/lat first and last, different altitude: still the closing duplicate.
+    _, ring = load_geojson_polygon(polygon('[[-3.0,52.7,0],[-2.997,52.7,0],[-2.997,52.7018,0],[-3.0,52.7,5]]'))
+    assert len(ring) == 3
+
+
+def test_geojson_unclosed_ring_with_altitude_is_accepted():
+    _, ring = load_geojson_polygon(polygon('[[-3.0,52.7,1],[-2.997,52.7,1],[-2.997,52.7018,1]]'))
+    assert ring == [(52.7, -3.0), (52.7, -2.997), (52.7018, -2.997)]
+
+
+# nav-mission-5: with 2 vertices point_in_polygon is always False, every fix would be an EXIT.
+def test_geojson_ring_with_two_vertices_is_rejected():
+    with pytest.raises(ValueError, match='vertices'):
+        load_geojson_polygon(polygon('[[-1,-1],[1,1],[-1,-1]]'))
+    with pytest.raises(ValueError, match='vertices'):
+        load_geojson_polygon(polygon('[[-1,-1],[1,1]]'))
+
+
+def test_geojson_empty_ring_is_rejected():
+    with pytest.raises(ValueError):
+        load_geojson_polygon('{"type":"Polygon","coordinates":[]}')
+    with pytest.raises(ValueError):
+        load_geojson_polygon('{"type":"Polygon","coordinates":[[]]}')
+
+
+@pytest.mark.parametrize('bad', ['[-2.997,NaN]', '[Infinity,52.7]', '["-2.997","52.7"]', '[true,52.7]', '[-2.997]', 'null'])
+def test_geojson_bad_position_is_rejected(bad):
+    with pytest.raises(ValueError, match='position 1'):
+        load_geojson_polygon(polygon('[[-3.0,52.7],%s,[-2.997,52.7018],[-3.0,52.7018],[-3.0,52.7]]' % bad))
+
+
+def test_geojson_collinear_ring_is_rejected():
+    with pytest.raises(ValueError, match='area'):
+        load_geojson_polygon(polygon('[[0,0],[1,1],[2,2],[0,0]]'))
 
 
 def test_local_frame_roundtrip():
