@@ -73,3 +73,29 @@ def test_following_without_a_fix_or_imu_warns_instead_of_silently_doing_nothing(
     assert f.status == 'following'
     assert cmds(f) == []
     assert any('fix' in w for w in warnings(f)), warnings(f)
+
+
+# ----- nav-mission-2: a status the owner of a Path can attribute to its own route ------------------
+
+def route_report(node):
+    rep = node.publishers['follower/route'].sent[-1]
+    return rep.stamp.sec, rep.stamp.nanosec, rep.frame_id
+
+
+def test_route_report_carries_the_stamp_of_the_path_it_is_about(node_params):
+    f = make_follower(node_params)
+    f.on_path(path((20.0, 20.0), (100.0, 20.0), sec=5, nanosec=7))
+    assert route_report(f) == (5, 7, 'following')
+    f.on_path(path(sec=9))   # someone else's empty Path
+    assert route_report(f) == (9, 0, 'idle')
+    assert f.publishers['follower/status'].sent[-1].data == 'idle'   # the plain status stays for its other readers
+
+
+def test_arrival_is_reported_for_the_path_that_arrived(node_params):
+    f = make_follower(node_params)
+    f.on_path(path((20.0, 20.0), (22.0, 20.0), sec=5, nanosec=7))
+    imu_east(f)
+    fix_at(f, 21.5, 20.0)   # within the 1 m arrive tolerance of the end
+    f.tick()
+    assert route_report(f) == (5, 7, 'arrived')
+    assert f.publishers['follower/status'].sent[-1].data == 'arrived'

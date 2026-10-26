@@ -4,6 +4,9 @@ Runs inside a vehicle namespace. Position comes from `fix` (NavSatFix) through t
 corridor's LocalFrame, so the path and the vehicle share the map frame on every backend;
 `imu` supplies the heading (wheel odometry yaw drifts as soon as a skid-steer slips, issue #19). Subscribes `path`, publishes `cmd_vel` and
 `follower/status` (std_msgs/String: idle | following | arrived). An empty Path cancels.
+`follower/route` (std_msgs/Header, latched) goes out with every status: the header stamp of the Path the
+status is about, the status in frame_id. Several nodes publish on `path`; this lets the one that sent a
+Path tell its own route's arrival from a foreign one and clear only what it owns (patrol_server).
 The controller itself is corridor_nav.pure_pursuit, tested without ROS.
 """
 import math
@@ -14,7 +17,7 @@ from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from sensor_msgs.msg import Imu, NavSatFix
-from std_msgs.msg import Float32, String
+from std_msgs.msg import Float32, Header, String
 
 from corridor_nav.geofence import LocalFrame, load_geojson_polygon
 from corridor_nav.local_pose import pose_from_fix
@@ -50,16 +53,19 @@ class WaypointFollower(Node):
         self.heading = None
         self.heading_stamp = None
         self.status = 'idle'
+        self.route_stamp = Header().stamp   # header stamp of the Path being followed
 
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         # Latched: patrol_server and the planner may start after us and need the current status, not the next change.
-        self.status_pub = self.create_publisher(String, 'follower/status', QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.status_pub = self.create_publisher(String, 'follower/status', latched)
+        self.route_pub = self.create_publisher(Header, 'follower/route', latched)
         self.xte_pub = self.create_publisher(Float32, 'follower/cross_track', 10)
         self.create_subscription(NavSatFix, 'fix', self.on_fix, 20)
         self.create_subscription(Imu, 'imu', self.on_imu, 20)
         self.create_subscription(Path, 'path', self.on_path, 10)
         self.timer = self.create_timer(1.0 / self.get_parameter('rate_hz').value, self.tick)
-        self.status_pub.publish(String(data=self.status))
+        self.publish_status()
 
     def on_fix(self, msg):
         self.fix = (msg.latitude, msg.longitude)
@@ -72,6 +78,7 @@ class WaypointFollower(Node):
     def on_path(self, msg):
         self.path = [(ps.pose.position.x, ps.pose.position.y) for ps in msg.poses]
         self.segment = 0
+        self.route_stamp = msg.header.stamp
         self.set_status('following' if len(self.path) >= 2 else 'idle')
         if len(self.path) < 2:
             self.cmd_pub.publish(Twist())
@@ -80,7 +87,11 @@ class WaypointFollower(Node):
         if status != self.status:
             self.status = status
             self.get_logger().info(f'status: {status}')
-        self.status_pub.publish(String(data=status))
+        self.publish_status()
+
+    def publish_status(self):
+        self.status_pub.publish(String(data=self.status))
+        self.route_pub.publish(Header(stamp=self.route_stamp, frame_id=self.status))
 
     def tick(self):
         if self.status != 'following':
