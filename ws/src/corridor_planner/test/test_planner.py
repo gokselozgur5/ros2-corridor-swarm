@@ -147,6 +147,19 @@ def test_max_tokens_with_tool_use_blocks_keeps_no_unanswered_tool_use():
     assert client.requests[-1]['messages'] == [{'role': 'user', 'content': 'hi'}]
 
 
+def test_rollback_keeps_the_earlier_exchanges():
+    client = StubClient([end_turn('v1 is idle.'), tool_use(), ConnectionError('offline'), end_turn()])
+    p = Planner(client, tools={'stop': lambda vehicle: {'stopped': True}}, schemas=SCHEMAS)
+    p.run('is v1 idle')
+    kept = list(p.messages)
+    assert [m['role'] for m in kept] == ['user', 'assistant']
+    p.run('stop v1')
+    assert p.messages == kept
+    p.run('hi')
+    assert_no_dangling_tool_use(client.requests[-1]['messages'])
+    assert client.requests[-1]['messages'] == kept + [{'role': 'user', 'content': 'hi'}]
+
+
 def test_rich_tool_content_passes_blocks_and_trims_trace():
     blocks = [{'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/png', 'data': 'AAAA'}},
               {'type': 'text', 'text': 'camera v1'}]
