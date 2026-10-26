@@ -90,3 +90,31 @@ def test_course_from_quaternion():
     # yaw 0 (east) -> course 90; yaw +90 (north) -> course 0
     assert abs(course_from_quaternion(0.0, 1.0) - 90.0) < 1e-6
     assert abs(course_from_quaternion(0.7071068, 0.7071068) - 0.0) < 1e-4
+
+
+# ----- review follow-up: a dropped marker says why, so the bridge can log it instead of staying silent
+
+def test_marker_or_reason_names_why_a_marker_is_dropped():
+    from corridor_cot.cot import marker_or_reason
+    now = datetime(2026, 10, 26, 12, 0, 0, tzinfo=timezone.utc)
+    good = '<event version="2.0" uid="m1" type="b-m-p-w" stale="2026-10-26T12:05:00.000Z"><point lat="52.7" lon="-2.9"/></event>'
+    marker, reason = marker_or_reason(good, now=now)
+    assert marker['uid'] == 'm1' and reason is None
+    assert marker_or_reason('<event version="2.0" uid="x" type="a-f-G-U-C"><point lat="52.7" lon="-2.9"/></event>', now=now) == (None, None)
+    _, reason = marker_or_reason('<event version="2.0" uid="m2" type="b-m-p-w"><point lon="-2.9"/></event>', now=now)
+    assert reason and 'm2' in reason and 'lat' in reason, reason
+    _, reason = marker_or_reason('<event version="2.0" uid="m3" type="b-m-p-w" stale="2026-10-26T11:59:00.000Z"><point lat="52.7" lon="-2.9"/></event>', now=now)
+    assert reason and 'm3' in reason and 'stale' in reason and '60 s' in reason, reason
+    _, reason = marker_or_reason('<event version="2.0" uid="m4" type="b-m-p-w"></event>', now=now)
+    assert reason and 'point' in reason, reason
+
+
+def test_marker_gate_forgets_the_oldest_uid_beyond_its_capacity_and_never_blocks_a_uidless_marker():
+    from corridor_cot.cot import MarkerGate
+    gate = MarkerGate(move_m=5.0, capacity=2)
+    here = {'lat': 52.7, 'lon': -2.9}
+    assert gate.admit({'uid': 'a', **here}) and gate.admit({'uid': 'b', **here}) and gate.admit({'uid': 'c', **here})
+    assert gate.admit({'uid': 'a', **here}), 'a was the oldest of three with capacity 2: forgotten, so admitted again'
+    assert not gate.admit({'uid': 'c', **here}), 'c is still remembered'
+    assert len(gate.sent) <= 2
+    assert gate.admit({'uid': '', **here}) and gate.admit({'uid': '', **here}), 'no uid, nothing to deduplicate on'
