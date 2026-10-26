@@ -10,6 +10,8 @@ import pytest
 
 rclpy = pytest.importorskip('rclpy')
 
+from sensor_msgs.msg import NavSatFix, NavSatStatus  # noqa: E402
+
 from corridor_cot import cot_bridge  # noqa: E402
 
 
@@ -75,7 +77,7 @@ def wait_for(cond, timeout_s=5.0):
 @pytest.fixture
 def bridge():
     # period_s large: PLI goes out only when a test calls send_pli itself; port 1 so a stray connect fails fast
-    rclpy.init(args=['--ros-args', '-p', 'period_s:=1000.0', '-p', 'host:=127.0.0.1', '-p', 'port:=1'])
+    rclpy.init(args=['--ros-args', '-p', 'period_s:=1000.0', '-p', 'fix_timeout_s:=0.5', '-p', 'host:=127.0.0.1', '-p', 'port:=1'])
     node = cot_bridge.CotBridge()
     node.requests, node.log, node.fakes = Recorder(), Recorder(), []
     node.request_pub = node.requests
@@ -94,6 +96,24 @@ def feed(node, chunks):
     with node.lock:
         node.sock = fake
     return fake
+
+
+def deliver_fix(node, status, lat=52.7, lon=-3.0, timeout_s=5.0):
+    """Publish /v1/fix from a helper node and spin the bridge until it has (or, for NO_FIX, has not) recorded it."""
+    helper = rclpy.create_node('fix_source')
+    pub = helper.create_publisher(NavSatFix, '/v1/fix', 10)
+    msg = NavSatFix()
+    msg.latitude, msg.longitude, msg.status.status = lat, lon, status
+    deadline = time.monotonic() + timeout_s
+    try:
+        while time.monotonic() < deadline:
+            pub.publish(msg)
+            rclpy.spin_once(node, timeout_sec=0.1)
+            if node.state['v1'].get('lat') == lat:
+                return True
+        return False
+    finally:
+        helper.destroy_node()
 
 
 # ----- cot-1: the reader thread survives a bad event and logs it ----------------------------------
@@ -118,3 +138,27 @@ def test_reader_ignores_a_marker_without_coordinates_and_goes_on(bridge):
     feed(bridge, [broken, marker_xml('atak-2', 52.701, -2.9985, 'RALLY2')])
     assert wait_for(lambda: len(bridge.requests.lines) == 1), bridge.log.lines
     assert 'RALLY2' in bridge.requests.lines[0]
+
+
+# ----- cot-2: a vehicle that stops reporting is not re-sent as a fresh PLI ---------------------------
+
+def test_silent_vehicle_gets_no_pli_after_fix_timeout(bridge):
+    sock = feed(bridge, [])
+    assert deliver_fix(bridge, NavSatStatus.STATUS_FIX)
+    bridge.send_pli()
+    assert len(sock.sent) == 1 and 'uid="corridor-v1"' in sock.sent[0]
+    time.sleep(1.0)  # fix_timeout_s is 0.5 in the fixture and nothing new arrived
+    bridge.send_pli()
+    assert len(sock.sent) == 1, sock.sent[1:]
+    assert deliver_fix(bridge, NavSatStatus.STATUS_FIX, lat=52.71)
+    bridge.send_pli()
+    assert len(sock.sent) == 2 and 'lat="52.7100000"' in sock.sent[1]
+
+
+def test_fix_without_a_fix_status_is_ignored(bridge):
+    sock = feed(bridge, [])
+    assert not deliver_fix(bridge, NavSatStatus.STATUS_NO_FIX, timeout_s=1.5)
+    assert 'lat' not in bridge.state['v1']
+    bridge.send_pli()
+    assert sock.sent == []
+    assert deliver_fix(bridge, NavSatStatus.STATUS_FIX)  # the same path delivers once the status says fix
