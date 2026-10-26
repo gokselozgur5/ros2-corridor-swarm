@@ -1,5 +1,11 @@
 """waypoint_follower on the stub rclpy from conftest: callbacks and the control tick are called directly,
 the stub clock is advanced by hand. The same scenarios run against real rclpy in test_waypoint_follower_node.py."""
+import pytest
+import rclpy
+
+if hasattr(rclpy, '__file__'):
+    pytest.skip('stub-rclpy tests: test_waypoint_follower_node.py covers the real stack', allow_module_level=True)
+
 from geometry_msgs.msg import PoseStamped, Quaternion
 from nav_msgs.msg import Path
 from sensor_msgs.msg import Imu, NavSatFix
