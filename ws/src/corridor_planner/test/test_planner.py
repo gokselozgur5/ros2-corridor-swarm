@@ -173,3 +173,22 @@ def test_rich_tool_content_passes_blocks_and_trims_trace():
     assert sent == blocks
     assert p.trace[-2]['result'] == {'vehicle': 'v1', 'width': 640, 'content_blocks': ['image', 'text']}
     assert 'AAAA' not in json.dumps(p.trace)
+
+
+# ----- review follow-up: a slip while answering the tool calls must not leave the tool_use unanswered either
+
+def test_a_tool_result_that_breaks_the_trace_rolls_back_the_exchange():
+    from types import SimpleNamespace as NS
+    from corridor_planner.planner import Planner
+
+    class Client:
+        class beta:
+            class messages:
+                @staticmethod
+                def create(**kw):
+                    return NS(stop_reason='tool_use', content=[NS(type='tool_use', id='t1', name='bad', input={})],
+                              usage=NS(input_tokens=1, output_tokens=1))
+    p = Planner(Client(), tools={'bad': lambda: {'_content': [1]}}, schemas=[])
+    out = p.run('go')   # the trace summary does 1.get('type') -> AttributeError
+    assert out.error.startswith('AttributeError'), out.error
+    assert p.messages == [], p.messages
