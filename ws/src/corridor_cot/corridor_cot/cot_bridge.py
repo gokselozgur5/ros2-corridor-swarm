@@ -1,7 +1,8 @@
 """CoT bridge (issue #16).
 
 Every vehicle's fix/odom -> one PLI event per `period_s` over TCP to the TAK server (FTS_HOST:8087,
-plain CoT, no TLS). Events from the server that are markers -> std_msgs/String on /mission/request
+plain CoT, no TLS); a vehicle whose fix is older than `fix_timeout_s` is left out, so its icon goes stale
+in ATAK. Events from the server that are markers -> std_msgs/String on /mission/request
 ("send the nearest vehicle to <callsign> at lat, lon"), so the planner can act on them. Reconnects on
 any socket error; never raises out of a callback."""
 import os
@@ -11,7 +12,7 @@ import threading
 import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
-from sensor_msgs.msg import NavSatFix
+from sensor_msgs.msg import NavSatFix, NavSatStatus
 from std_msgs.msg import String
 
 from corridor_cot.cot import course_from_quaternion, parse_marker, pli_payload
@@ -24,10 +25,11 @@ class CotBridge(Node):
         self.declare_parameter('host', os.environ.get('FTS_HOST', '127.0.0.1'))
         self.declare_parameter('port', 8087)
         self.declare_parameter('period_s', 2.0)
+        self.declare_parameter('fix_timeout_s', 5.0)
         self.declare_parameter('team', 'Cyan')
         self.state = {v: {} for v in self.get_parameter('vehicles').value}
         for v in self.state:
-            self.create_subscription(NavSatFix, f'/{v}/fix', lambda m, v=v: self.state[v].update(lat=m.latitude, lon=m.longitude, hae=m.altitude), 10)
+            self.create_subscription(NavSatFix, f'/{v}/fix', lambda m, v=v: self.on_fix(v, m), 10)
             self.create_subscription(Odometry, f'/{v}/odom', lambda m, v=v: self.state[v].update(
                 course=course_from_quaternion(m.pose.pose.orientation.z, m.pose.pose.orientation.w),
                 speed=abs(m.twist.twist.linear.x)), 10)
@@ -44,8 +46,17 @@ class CotBridge(Node):
         self.get_logger().info(f'connected to TAK server {host}:{port}')
         return s
 
+    def now_s(self):
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def on_fix(self, v, m):
+        if m.status.status < NavSatStatus.STATUS_FIX:
+            return
+        self.state[v].update(lat=m.latitude, lon=m.longitude, hae=m.altitude, t=self.now_s())
+
     def send_pli(self):
-        payload = pli_payload(self.state, team=self.get_parameter('team').value)
+        payload = pli_payload(self.state, t=self.now_s(), fix_timeout_s=self.get_parameter('fix_timeout_s').value,
+                              team=self.get_parameter('team').value)
         if not payload:
             return
         with self.lock:

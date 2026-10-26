@@ -26,6 +26,15 @@ def test_pli_payload_one_event_per_vehicle_with_a_fix():
     assert pli_payload({'v1': {}}) == ''
 
 
+def test_pli_payload_drops_a_vehicle_whose_fix_went_silent():
+    # cot-2: v2's last fix was at t=100; after fix_timeout_s with nothing new it must not be re-sent as a live PLI
+    state = {'v1': {'lat': 52.7, 'lon': -3.0, 't': 109.0}, 'v2': {'lat': 52.8, 'lon': -3.1, 't': 100.0}}
+    live = pli_payload(state, t=110.0, fix_timeout_s=5.0)
+    assert 'corridor-v1' in live and 'corridor-v2' not in live
+    both = pli_payload(state, t=104.0, fix_timeout_s=5.0)
+    assert 'corridor-v1' in both and 'corridor-v2' in both
+
+
 def test_parse_marker_accepts_waypoint_and_rejects_pli():
     marker = ('<event version="2.0" uid="m1" type="b-m-p-w" how="h-g-i-g-o" time="t" start="t" stale="t">'
               '<point lat="52.701" lon="-2.999" hae="0" ce="9999999" le="9999999"/>'
