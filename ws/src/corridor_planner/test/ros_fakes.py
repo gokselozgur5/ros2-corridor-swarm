@@ -39,9 +39,9 @@ class FakeFuture:
 
 class FakeGoalHandle:
     """The planner's ClientGoalHandle of a running Patrol goal. The cancel is acknowledged after
-    `ack_delay_s`; the execute loop only notices it at its next poll (patrol_server sleeps 0.5 s), so
-    the result arrives `exit_delay_s` after the cancel, or never when None. Appends to `log` in the
-    order things happen."""
+    `ack_delay_s`; the result arrives `exit_delay_s` after the cancel, or never when None. The delays
+    model the slowest server the planner tolerates (a 0.5 s poll); the merged patrol_server wakes its
+    loop from the cancel callback, so it is faster. Appends to `log` in the order things happen."""
 
     def __init__(self, log, exit_delay_s=0.2, ack_delay_s=0.0, accepted=True):
         self.log = log
