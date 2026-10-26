@@ -5,17 +5,22 @@ starting at the vertex nearest the vehicle); the vehicle's position comes from `
 corridor's LocalFrame, like the follower's (#19: odometry starts at the spawn and drifts). Cancel or
 a geofence EXIT for this vehicle stops the lap.
 
+One goal at a time: a new goal preempts the running one (result 'preempted') and publishes its route
+only once the old loop has exited, so the two never write the follower's path over each other.
+
 Several nodes publish on `path` (the planner's goto and stop, geofence_monitor, clicked_goal, wasd,
 send_path). Every Path this server publishes carries a unique header stamp, and the follower echoes
 the stamp of the Path it holds with each status on `follower/route`. So only an arrival on this
 server's own route counts as a lap, a Path from anyone else ends the goal as 'preempted', and a
 cancel or abort clears the follower only while it still holds this server's route, never a Path
-another node sent since. Results: done | cancelled | geofence | preempted | error.
+another node sent since. A cancel's clear goes out inside the cancel callback, before the client is
+answered, so a Path the client sends on that answer lands after it.
+Results: done | cancelled | geofence | preempted | error.
 """
 import math
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import rclpy
 from geometry_msgs.msg import Point, PoseStamped
@@ -108,7 +113,9 @@ class Run:
     laps_done: int = 0
     distance: float = 0.0
     cancelled: bool = False
+    preempted: bool = False     # a newer goal takes over
     breached: bool = False
+    finished: threading.Event = field(default_factory=threading.Event)
 
 
 def verdict(run, owner, cancel_requested):
@@ -116,6 +123,8 @@ def verdict(run, owner, cancel_requested):
     finish with, or None to keep waiting."""
     if run.cancelled or cancel_requested:
         return 'cancelled'
+    if run.preempted:
+        return 'preempted'
     if run.breached:
         return 'geofence'
     if not owner.owns():
@@ -143,7 +152,9 @@ class PatrolServer(Node):
         self.owner = RouteOwner()
         self.lock = threading.Lock()      # owner
         self.wake = threading.Event()     # the execute loop re-evaluates on every report, event or cancel
-        self.runs = {}                    # goal id -> Run
+        self.runs = {}                    # goal id -> Run, from acceptance to the end of its loop
+        self.current = None               # the Run whose loop is running or about to
+        self.goal_lock = threading.Lock()   # one goal takes over at a time
         cb = ReentrantCallbackGroup()
         self.path_pub = self.create_publisher(Path, 'path', 10)
         self.create_subscription(NavSatFix, 'fix', self.on_fix, 20, callback_group=cb)
@@ -152,7 +163,7 @@ class PatrolServer(Node):
         self.create_subscription(GeofenceEvent, '/fleet/geofence_events', self.on_geofence, 10, callback_group=cb)
         self.server = ActionServer(self, Patrol, 'patrol', execute_callback=self.execute,
                                    goal_callback=self.on_goal, cancel_callback=self.on_cancel,
-                                   callback_group=cb)
+                                   handle_accepted_callback=self.on_accepted, callback_group=cb)
         self.get_logger().info(f'{self.vehicle}: patrol server on corridor {self.corridor_id}')
 
     def on_fix(self, msg):
@@ -165,9 +176,10 @@ class PatrolServer(Node):
 
     def on_geofence(self, ev):
         if ev.vehicle == self.vehicle and ev.type == GeofenceEvent.EXIT:
-            for run in list(self.runs.values()):
+            run = self.current
+            if run is not None:
                 run.breached = True
-            self.wake.set()
+                self.wake.set()
 
     def on_goal(self, goal):
         if goal.corridor_id and goal.corridor_id != self.corridor_id:
@@ -177,10 +189,25 @@ class PatrolServer(Node):
             return GoalResponse.REJECT
         return GoalResponse.ACCEPT
 
+    def on_accepted(self, handle):
+        run = Run(handle, handle.request.laps)
+        self.runs[goal_key(handle)] = run
+        with self.goal_lock:
+            old = self.current
+            if old is not None:
+                self.get_logger().info('new goal preempts the running one')
+                old.preempted = True
+                self.wake.set()
+                if not old.finished.wait(5.0):
+                    self.get_logger().error('the running goal did not stop in 5 s')
+            self.current = run
+            handle.execute()
+
     def on_cancel(self, handle):
         run = self.runs.get(goal_key(handle))
         if run is not None:
             run.cancelled = True
+            self.clear_if_owned()   # before the client is answered: a Path it sends on the answer lands after this
             self.wake.set()
         return CancelResponse.ACCEPT
 
@@ -210,20 +237,24 @@ class PatrolServer(Node):
                 self.publish([])
 
     def execute(self, handle):
-        run = Run(handle, handle.request.laps)
-        self.runs[goal_key(handle)] = run
+        run = self.runs[goal_key(handle)]
         try:
             return self.patrol(run)
         finally:
             self.runs.pop(goal_key(handle), None)
+            if self.current is run:
+                self.current = None
+            run.finished.set()
 
     def patrol(self, run):
         handle = run.handle
         deadline = time.time() + 5.0
-        while self.pose is None and time.time() < deadline and not (run.cancelled or handle.is_cancel_requested):
+        while self.pose is None and time.time() < deadline and not (run.cancelled or run.preempted or handle.is_cancel_requested):
             time.sleep(0.1)
         if run.cancelled or handle.is_cancel_requested:
             return self.finish(run, 'cancelled')
+        if run.preempted:
+            return self.finish(run, 'preempted')
         if self.pose is None:
             return self.finish(run, 'error')
         inset = inset_polygon(self.poly, self.get_parameter('inset_m').value)
