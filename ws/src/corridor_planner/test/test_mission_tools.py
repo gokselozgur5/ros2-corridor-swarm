@@ -162,3 +162,13 @@ def test_summary_without_a_corridor_has_no_xy():
     v.odom = Odometry()
     d = node._summary('v1')
     assert 'x' not in d and 'y' not in d and d['lat'] == 52.7001
+
+
+# ----- review follow-ups: the follower stops at once, the tool says whether the old goal finished, goto starts where the vehicle is after the stop
+
+def test_stop_publishes_the_empty_path_right_after_the_cancel_not_after_the_old_goal_exited():
+    log = []
+    node = planner(log)
+    node.vehicles['v1'].goal = FakeGoalHandle(log, exit_delay_s=0.2)
+    node.t_stop('v1')
+    assert log.index('cancel') < log.index('path_empty') < log.index('old_result'), log
