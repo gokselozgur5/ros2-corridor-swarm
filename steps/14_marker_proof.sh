@@ -22,7 +22,7 @@ xml = (f'<event version="2.0" uid="atak-marker-1" type="b-m-p-w" how="h-g-i-g-o"
 s = socket.create_connection(('127.0.0.1', 8087), timeout=5)
 s.sendall(xml.encode()); s.sendall(xml.encode())
 import time; time.sleep(3); s.close()
-print('marker sent twice')
+print('marker sent twice: the bridge forwards the placement once, the repeat at the same spot is dropped (marker_move_m)')
 PY
 for i in $(seq 1 20); do grep -q "RALLY1" /tmp/req16.txt 2>/dev/null && break; sleep 1; done
 grep -m1 "RALLY1" /tmp/req16.txt || { echo "no request seen"; grep -i "marker\|warn\|error" /tmp/cot16b.log | tail -3; }
