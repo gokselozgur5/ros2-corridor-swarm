@@ -207,7 +207,8 @@ class PatrolServer(Node):
         run = self.runs.get(goal_key(handle))
         if run is not None:
             run.cancelled = True
-            self.clear_if_owned()   # before the client is answered: a Path it sends on the answer lands after this
+            if self.current is run:   # the route in the owner is the current goal's; an older goal must not clear it
+                self.clear_if_owned()   # before the client is answered: a Path it sends on the answer lands after this
             self.wake.set()
         return CancelResponse.ACCEPT
 
@@ -288,7 +289,7 @@ class PatrolServer(Node):
 
     def finish(self, run, name):
         handle = run.handle
-        if name in ('cancelled', 'geofence', 'error'):
+        if name in ('cancelled', 'geofence', 'error') and self.current is run:
             self.clear_if_owned()
         if name == 'cancelled':
             # rclpy moves the goal to CANCELING right after the cancel callback; canceled() is legal only from there.

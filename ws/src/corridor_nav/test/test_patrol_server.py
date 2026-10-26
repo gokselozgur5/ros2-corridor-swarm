@@ -319,3 +319,18 @@ def test_planner_sequence_cancel_then_patrol_leaves_the_new_route_in_place(node_
     assert srv.publishers['path'].sent[-1] is routes(srv)[1], 'something was published after the new route'
     assert not b.finished()
     stop(srv, b)
+
+
+# ----- final review: RouteOwner is server-wide, so a clear for a goal that is no longer current must not erase
+# the current goal's route (the preempt-timeout and queued-cancel paths)
+
+def test_cancel_of_a_goal_that_is_no_longer_current_does_not_clear_the_current_route(node_params):
+    from corridor_nav.patrol_server import goal_key
+    srv, a = patrolling(node_params, laps=0)
+    b = FakeHandle(srv)
+    srv.runs[goal_key(b)] = Run(b, 0)
+    srv.current = srv.runs[goal_key(b)]          # b took over (as after the 5 s preempt timeout) ...
+    srv.send_route([(0.0, 0.0), (10.0, 0.0)])     # ... and published its route
+    before = len(empties(srv))
+    srv.server.cancel_callback(a)                 # a's cancel arrives late
+    assert len(empties(srv)) == before, "a's cancel erased b's route"
