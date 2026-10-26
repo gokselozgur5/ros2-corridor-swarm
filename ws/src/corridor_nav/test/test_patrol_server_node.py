@@ -13,6 +13,8 @@ import pytest
 from conftest import ROS, until
 
 if not ROS:
+    if __import__('os').environ.get('REQUIRE_ROS'):
+        pytest.exit('REQUIRE_ROS is set but rclpy is absent: source the ROS workspace first', returncode=3)
     pytest.skip('needs ROS 2: run on Thor', allow_module_level=True)
 
 from action_msgs.msg import GoalStatus  # noqa: E402
