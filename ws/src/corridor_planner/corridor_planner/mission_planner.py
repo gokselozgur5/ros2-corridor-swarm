@@ -191,6 +191,7 @@ class MissionPlanner(Node):
         if start is None:
             return {'accepted': False, 'reason': f'no fix from {vehicle} yet'}
         self.t_stop(vehicle)
+        start = start_xy(self.frame, v.fix) or start   # the vehicle kept moving while the old goal exited
         path = Path()
         path.header.frame_id = 'map'
         path.header.stamp = self.get_clock().now().to_msg()
