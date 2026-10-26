@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-from corridor_cot.cot import course_from_quaternion, parse_marker, pli_event
+from corridor_cot.cot import course_from_quaternion, parse_marker, pli_event, pli_payload
 
 
 def test_pli_event_shape():
@@ -14,6 +14,16 @@ def test_pli_event_shape():
     assert pt.get('lat') == '52.7000000' and pt.get('lon') == '-3.0000000'
     assert ev.find('detail/contact').get('callsign') == 'V1'
     assert ev.find('detail/track').get('speed') == '3.00'
+
+
+def test_pli_payload_one_event_per_vehicle_with_a_fix():
+    state = {'v1': {'lat': 52.7, 'lon': -3.0, 'hae': 10.0, 'course': 45.0, 'speed': 2.0}, 'v2': {'course': 10.0}}
+    events = [ET.fromstring(x + '</event>') for x in pli_payload(state, team='Red').split('</event>') if x]
+    assert [e.get('uid') for e in events] == ['corridor-v1']
+    assert events[0].find('detail/contact').get('callsign') == 'V1'
+    assert events[0].find('detail/__group').get('name') == 'Red'
+    assert events[0].find('detail/track').get('course') == '45.0'
+    assert pli_payload({'v1': {}}) == ''
 
 
 def test_parse_marker_accepts_waypoint_and_rejects_pli():
