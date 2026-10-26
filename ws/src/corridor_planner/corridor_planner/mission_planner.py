@@ -44,16 +44,20 @@ def wait_future(fut, timeout_s):
     return done.wait(timeout_s)
 
 
-def stop_goal(handle, timeout_s=STOP_TIMEOUT_S):
+def stop_goal(handle, timeout_s=STOP_TIMEOUT_S, after_cancel_sent=None):
     """Cancel an action goal and wait until its execute callback has returned.
 
     patrol_server notices the cancel at its next 0.5 s poll and then publishes an empty Path; a
     successor route sent before that is erased by it. The result is requested before the cancel so
-    the goal cannot finish and expire in between. Returns 'finished', 'cancel_timeout' or
-    'result_timeout'."""
+    the goal cannot finish and expire in between. `after_cancel_sent` runs once the cancel request is
+    out and before any waiting: the follower's own stop must not wait for the server's poll.
+    Returns 'finished', 'cancel_timeout' or 'result_timeout'."""
     deadline = time.monotonic() + timeout_s
     result = handle.get_result_async()
-    if not wait_future(handle.cancel_goal_async(), timeout_s):
+    cancel = handle.cancel_goal_async()
+    if after_cancel_sent is not None:
+        after_cancel_sent()
+    if not wait_future(cancel, timeout_s):
         return 'cancel_timeout'
     if not wait_future(result, max(0.0, deadline - time.monotonic())):
         return 'result_timeout'
@@ -204,13 +208,17 @@ class MissionPlanner(Node):
         self._check(vehicle)
         v = self.vehicles[vehicle]
         cancelled = False
+
+        def stop_follower():
+            self.path_pubs[vehicle].publish(Path())
         if v.goal is not None:
             handle, v.goal = v.goal, None
             cancelled = True
-            status = stop_goal(handle, STOP_TIMEOUT_S)
+            status = stop_goal(handle, STOP_TIMEOUT_S, after_cancel_sent=stop_follower)
             if status != 'finished':
                 self.get_logger().warn(f'{vehicle}: patrol goal not finished {STOP_TIMEOUT_S} s after cancel ({status})')
-        self.path_pubs[vehicle].publish(Path())
+        else:
+            stop_follower()
         v.mode = 'stopped'
         return {'stopped': True, 'vehicle': vehicle, 'cancelled_patrol': cancelled}
 
