@@ -15,6 +15,8 @@ if os.environ.get('REQUIRE_ROS'):
 else:
     rclpy = pytest.importorskip('rclpy')
 if not hasattr(rclpy, '__file__'):
+    if os.environ.get('REQUIRE_ROS'):
+        pytest.exit('REQUIRE_ROS is set but rclpy is a stand-in: source the ROS workspace first', returncode=3)
     pytest.skip('a stand-in rclpy from another package: the real stack runs these on Thor', allow_module_level=True)
 if os.environ.get('ROS_DOMAIN_ID', '0') == '42':
     pytest.exit('ROS_DOMAIN_ID is the demo domain 42 and these tests publish /v1/fix: run them with ROS_DOMAIN_ID=77', returncode=3)
