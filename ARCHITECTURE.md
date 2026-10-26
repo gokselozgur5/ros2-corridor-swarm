@@ -55,7 +55,7 @@ Everything is simulated. The target is a small fleet of ground vehicles that liv
 | `list_vehicles()` | reads `/fleet/state` |
 | `get_vehicle(id)` | fix, odom, battery, current goal |
 | `patrol(vehicle, corridor)` | sends the `Patrol` action goal |
-| `goto(vehicle, lat, lon)` | sends a single waypoint |
+| `goto(vehicle, lat, lon)` | publishes a two-pose Path, from the vehicle's fix to the target |
 | `stop(vehicle)` | cancels the active goal |
 | `describe_scene(vehicle)` | grabs one camera frame, returns it as an image block |
 | `geofence_events(since)` | recent breaches |
