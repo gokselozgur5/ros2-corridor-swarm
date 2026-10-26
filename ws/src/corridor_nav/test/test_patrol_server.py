@@ -1,12 +1,17 @@
 """patrol_server on the stub rclpy from conftest: callbacks are called directly, the execute loop runs in a
 thread behind a fake goal handle, and a fake follower answers on the topics the server subscribes to.
 The same scenarios run against real rclpy in test_patrol_server_node.py (Thor)."""
+import pytest
+import rclpy
+
+if hasattr(rclpy, '__file__'):
+    pytest.skip('stub-rclpy tests: test_patrol_server_node.py covers the real stack', allow_module_level=True)
+
 import math
 import threading
 import time
 import types
 
-import pytest
 from builtin_interfaces.msg import Time
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
@@ -202,7 +207,7 @@ def test_stamps_are_unique_even_while_the_clock_stands_still():
     o.published(a, True)
     b = o.next_stamp(0)
     o.published(b, True)
-    assert (a, b, o.next_stamp(10**12)) == (1, 2, 10**12)
+    assert (a, b, o.next_stamp(10**12)) == (1, 3, 10**12 + 1)   # unique, increasing, and odd
 
 
 def test_verdict_precedence():
@@ -314,3 +319,27 @@ def test_planner_sequence_cancel_then_patrol_leaves_the_new_route_in_place(node_
     assert srv.publishers['path'].sent[-1] is routes(srv)[1], 'something was published after the new route'
     assert not b.finished()
     stop(srv, b)
+
+
+# ----- final review: RouteOwner is server-wide, so a clear for a goal that is no longer current must not erase
+# the current goal's route (the preempt-timeout and queued-cancel paths)
+
+def test_cancel_of_a_goal_that_is_no_longer_current_does_not_clear_the_current_route(node_params):
+    from corridor_nav.patrol_server import goal_key
+    srv, a = patrolling(node_params, laps=0)
+    b = FakeHandle(srv)
+    srv.runs[goal_key(b)] = Run(b, 0)
+    srv.current = srv.runs[goal_key(b)]          # b took over (as after the 5 s preempt timeout) ...
+    srv.send_route([(0.0, 0.0), (10.0, 0.0)])     # ... and published its route
+    before = len(empties(srv))
+    srv.server.cancel_callback(a)                 # a's cancel arrives late
+    assert len(empties(srv)) == before, "a's cancel erased b's route"
+
+
+def test_server_stamps_are_odd_so_a_sim_time_path_from_another_node_never_matches():
+    owner = RouteOwner()
+    s1 = owner.next_stamp(1_000_000)            # a /clock tick: even, what now().to_msg() gives every node
+    assert s1 % 2 == 1 and s1 >= 1_000_000
+    owner.published(s1, True)
+    s2 = owner.next_stamp(1_000_000)
+    assert s2 % 2 == 1 and s2 > s1

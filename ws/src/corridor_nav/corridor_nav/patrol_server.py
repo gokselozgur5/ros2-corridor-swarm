@@ -26,7 +26,7 @@ import rclpy
 from geometry_msgs.msg import Point, PoseStamped
 from nav_msgs.msg import Path
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
-from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
@@ -86,8 +86,10 @@ class RouteOwner:
         self.status = None      # the follower's status for `held`
 
     def next_stamp(self, now_ns):
-        """Unique and increasing, so two Paths never share a stamp even while the clock stands still."""
-        return max(now_ns, self.stamp + 1, 1)
+        """Unique and increasing, so two Paths never share a stamp even while the clock stands still; odd, so a
+        Path another node stamps with now().to_msg() under sim time (a multiple of the clock step, even) never
+        matches a route of this server's."""
+        return max(now_ns, self.stamp + 1, 1) | 1
 
     def published(self, stamp, route):
         self.stamp, self.route, self.pending = stamp, route, True
@@ -156,11 +158,12 @@ class PatrolServer(Node):
         self.current = None               # the Run whose loop is running or about to
         self.goal_lock = threading.Lock()   # one goal takes over at a time
         cb = ReentrantCallbackGroup()
+        serial = MutuallyExclusiveCallbackGroup()   # route reports and events in arrival order: RouteOwner is last-report-wins
         self.path_pub = self.create_publisher(Path, 'path', 10)
         self.create_subscription(NavSatFix, 'fix', self.on_fix, 20, callback_group=cb)
         self.create_subscription(Header, 'follower/route', self.on_route,
-                                 QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL), callback_group=cb)
-        self.create_subscription(GeofenceEvent, '/fleet/geofence_events', self.on_geofence, 10, callback_group=cb)
+                                 QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL), callback_group=serial)
+        self.create_subscription(GeofenceEvent, '/fleet/geofence_events', self.on_geofence, 10, callback_group=serial)
         self.server = ActionServer(self, Patrol, 'patrol', execute_callback=self.execute,
                                    goal_callback=self.on_goal, cancel_callback=self.on_cancel,
                                    handle_accepted_callback=self.on_accepted, callback_group=cb)
@@ -207,7 +210,8 @@ class PatrolServer(Node):
         run = self.runs.get(goal_key(handle))
         if run is not None:
             run.cancelled = True
-            self.clear_if_owned()   # before the client is answered: a Path it sends on the answer lands after this
+            if self.current is run:   # the route in the owner is the current goal's; an older goal must not clear it
+                self.clear_if_owned()   # before the client is answered: a Path it sends on the answer lands after this
             self.wake.set()
         return CancelResponse.ACCEPT
 
@@ -288,7 +292,7 @@ class PatrolServer(Node):
 
     def finish(self, run, name):
         handle = run.handle
-        if name in ('cancelled', 'geofence', 'error'):
+        if name in ('cancelled', 'geofence', 'error') and self.current is run:
             self.clear_if_owned()
         if name == 'cancelled':
             # rclpy moves the goal to CANCELING right after the cancel callback; canceled() is legal only from there.
