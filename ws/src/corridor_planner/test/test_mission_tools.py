@@ -38,7 +38,7 @@ def test_stop_returns_only_after_the_old_goal_has_exited():
     old = FakeGoalHandle(log, exit_delay_s=0.2)
     node.vehicles['v1'].goal = old
     out = node.t_stop('v1')
-    assert out == {'stopped': True, 'vehicle': 'v1', 'cancelled_patrol': True}
+    assert out == {'stopped': True, 'vehicle': 'v1', 'cancelled_patrol': True, 'finished': True}
     assert old.result_future.done(), f'returned before the old goal exited: {log}'
     assert old.result_requests == 1
     assert node.vehicles['v1'].goal is None
@@ -172,3 +172,14 @@ def test_stop_publishes_the_empty_path_right_after_the_cancel_not_after_the_old_
     node.vehicles['v1'].goal = FakeGoalHandle(log, exit_delay_s=0.2)
     node.t_stop('v1')
     assert log.index('cancel') < log.index('path_empty') < log.index('old_result'), log
+
+
+def test_stop_reports_whether_the_old_goal_finished(monkeypatch):
+    monkeypatch.setattr(mp, 'STOP_TIMEOUT_S', 0.2)
+    log = []
+    node = planner(log)
+    node.vehicles['v1'].goal = FakeGoalHandle(log, exit_delay_s=0.05)
+    assert node.t_stop('v1')['finished'] is True
+    node.vehicles['v1'].goal = FakeGoalHandle(log, exit_delay_s=None)
+    assert node.t_stop('v1')['finished'] is False
+    assert node.t_stop('v1')['finished'] is True   # nothing to cancel

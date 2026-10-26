@@ -207,7 +207,7 @@ class MissionPlanner(Node):
     def t_stop(self, vehicle):
         self._check(vehicle)
         v = self.vehicles[vehicle]
-        cancelled = False
+        cancelled, finished = False, True
 
         def stop_follower():
             self.path_pubs[vehicle].publish(Path())
@@ -215,12 +215,13 @@ class MissionPlanner(Node):
             handle, v.goal = v.goal, None
             cancelled = True
             status = stop_goal(handle, STOP_TIMEOUT_S, after_cancel_sent=stop_follower)
-            if status != 'finished':
+            finished = status == 'finished'
+            if not finished:
                 self.get_logger().warn(f'{vehicle}: patrol goal not finished {STOP_TIMEOUT_S} s after cancel ({status})')
         else:
             stop_follower()
         v.mode = 'stopped'
-        return {'stopped': True, 'vehicle': vehicle, 'cancelled_patrol': cancelled}
+        return {'stopped': True, 'vehicle': vehicle, 'cancelled_patrol': cancelled, 'finished': finished}
 
     def t_events(self, limit):
         out = []
