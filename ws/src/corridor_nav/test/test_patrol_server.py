@@ -3,6 +3,7 @@ thread behind a fake goal handle, and a fake follower answers on the topics the 
 The same scenarios run against real rclpy in test_patrol_server_node.py (Thor)."""
 import math
 import threading
+import time
 import types
 
 import pytest
@@ -265,3 +266,51 @@ def test_cancel_does_not_clear_a_route_the_server_no_longer_owns(node_params):
     report(srv, 'following', stamp=FOREIGN)   # a goto replaced the patrol route
     stop(srv, handle)
     assert empties(srv) == [], 'cancel killed the goto with an empty Path'
+
+
+# ----- nav-mission-1: one goal at a time, and the clear goes out before the cancel is answered --------
+
+def test_new_goal_preempts_the_running_one_without_clearing_the_follower(node_params):
+    srv, a = patrolling(node_params, laps=0)
+    b = FakeHandle(srv, laps=0)
+    accept(srv, b)
+    assert until(a.finished), 'the first goal keeps running beside the second'
+    assert a.state == 'aborted' and a.result.result == 'preempted'
+    assert until(lambda: len(routes(srv)) == 2), 'the new goal published no route'
+    report(srv, 'following')
+    time.sleep(0.6)
+    assert empties(srv) == [] and not b.finished()
+    stop(srv, b)
+
+
+def test_cancel_clears_the_route_inside_the_cancel_callback(node_params):
+    # rclpy answers the client after cancel_callback returns, and the planner publishes its next Path right
+    # after that answer: the empty Path must already be out, from the callback's own thread.
+    srv, a = patrolling(node_params, laps=0)
+    published = []
+    original = srv.path_pub.publish
+    srv.path_pub.publish = lambda msg: (published.append((msg, threading.current_thread())), original(msg))
+    srv.server.cancel_callback(a)
+    cleared = [thread for msg, thread in published if not msg.poses]
+    assert cleared == [threading.current_thread()], 'the clear is not out when the cancel is answered'
+    a.cancel_requested = True
+    report(srv, 'following', stamp=FOREIGN)   # the planner's goto, published on the cancel answer
+    assert until(a.finished)
+    assert a.state == 'canceled' and a.result.result == 'cancelled'
+    assert len(empties(srv)) == 1, 'a second empty Path went out after the goto'
+
+
+def test_planner_sequence_cancel_then_patrol_leaves_the_new_route_in_place(node_params):
+    srv, a = patrolling(node_params, laps=0)
+    srv.server.cancel_callback(a)   # t_stop, awaited by the planner
+    a.cancel_requested = True
+    b = FakeHandle(srv, laps=0)     # t_patrol's next goal
+    accept(srv, b)
+    assert until(lambda: len(routes(srv)) == 2)
+    report(srv, 'following')
+    assert until(a.finished)
+    assert a.state == 'canceled'
+    time.sleep(0.6)
+    assert srv.publishers['path'].sent[-1] is routes(srv)[1], 'something was published after the new route'
+    assert not b.finished()
+    stop(srv, b)

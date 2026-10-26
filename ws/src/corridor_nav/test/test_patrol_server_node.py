@@ -223,3 +223,39 @@ def test_cancel_does_not_clear_a_route_the_server_no_longer_owns(rig):
     rig.result(gh)
     time.sleep(0.7)
     assert rig.empties() == [], 'cancel killed the goto with an empty Path'
+
+
+# ----- nav-mission-1: one goal at a time, and the clear goes out before the cancel is answered --------
+
+def pose_counts(rig):
+    return [len(p.poses) for p in rig.follower.paths]
+
+
+def test_new_goal_preempts_the_running_one_without_clearing_the_follower(rig):
+    a = rig.patrolling(laps=0)
+    rig.goal(laps=0)
+    res = rig.result(a)
+    assert res.status == GoalStatus.STATUS_ABORTED and res.result.result == 'preempted'
+    assert until(lambda: len(rig.routes()) == 2, timeout=5.0), 'the new goal published no route'
+    time.sleep(0.7)
+    assert pose_counts(rig) == [5, 5], 'an empty Path went out around the new route'
+
+
+def test_cancel_is_answered_after_the_clear_so_a_successor_route_survives(rig):
+    a = rig.patrolling(laps=0)
+    rig.cancel(a)                                     # the planner's stop, awaited
+    rig.foreign_path([(20.0, 20.0), (60.0, 60.0)])    # its goto, sent on the answer
+    res = rig.result(a)
+    assert res.status == GoalStatus.STATUS_CANCELED and res.result.result == 'cancelled'
+    time.sleep(0.7)
+    assert pose_counts(rig) == [5, 0, 2], 'the goto did not survive the cancel'
+
+
+def test_planner_sequence_cancel_then_patrol_leaves_the_new_route_in_place(rig):
+    a = rig.patrolling(laps=0)
+    rig.cancel(a)
+    rig.goal(laps=0)
+    assert rig.result(a).status == GoalStatus.STATUS_CANCELED
+    assert until(lambda: len(rig.routes()) == 2, timeout=5.0), 'the new goal published no route'
+    time.sleep(0.7)
+    assert pose_counts(rig) == [5, 0, 5], 'the new patrol route was overwritten'
