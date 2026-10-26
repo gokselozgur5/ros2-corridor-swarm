@@ -88,3 +88,17 @@ def test_local_frame_roundtrip():
     lat, lon = f.to_latlon(x, y)
     assert math.isclose(lat, 52.6, abs_tol=1e-9) and math.isclose(lon, -2.6, abs_tol=1e-9)
     assert y < 0 and x > 0  # south and east of the origin
+
+
+# ----- review follow-up: malformed coordinates containers and oversized integers are a ValueError too
+
+def test_geojson_coordinates_that_are_not_rings_and_huge_integers_are_rejected():
+    import pytest
+    from corridor_nav.geofence import load_geojson_polygon
+    with pytest.raises(ValueError, match='coordinates'):
+        load_geojson_polygon('{"type":"Polygon","coordinates":{"x":1}}')
+    with pytest.raises(ValueError, match='coordinates'):
+        load_geojson_polygon('{"type":"Polygon","coordinates":7}')
+    huge = '1' + '0' * 400
+    with pytest.raises(ValueError, match='position 1'):
+        load_geojson_polygon('{"type":"Polygon","coordinates":[[[-3.0,52.7],[' + huge + ',52.7],[-2.997,52.7018],[-3.0,52.7]]]}')
