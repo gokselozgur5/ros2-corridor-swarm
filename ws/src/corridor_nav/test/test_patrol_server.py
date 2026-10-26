@@ -334,3 +334,12 @@ def test_cancel_of_a_goal_that_is_no_longer_current_does_not_clear_the_current_r
     before = len(empties(srv))
     srv.server.cancel_callback(a)                 # a's cancel arrives late
     assert len(empties(srv)) == before, "a's cancel erased b's route"
+
+
+def test_server_stamps_are_odd_so_a_sim_time_path_from_another_node_never_matches():
+    owner = RouteOwner()
+    s1 = owner.next_stamp(1_000_000)            # a /clock tick: even, what now().to_msg() gives every node
+    assert s1 % 2 == 1 and s1 >= 1_000_000
+    owner.published(s1, True)
+    s2 = owner.next_stamp(1_000_000)
+    assert s2 % 2 == 1 and s2 > s1
