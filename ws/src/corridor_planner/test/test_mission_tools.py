@@ -218,3 +218,15 @@ def test_patrol_and_goto_publish_no_empty_path_of_their_own():
     assert node.t_goto('v1', lat, lon)['accepted'] is True
     assert 'path_empty' not in log and log.count('path') == 1, log
     assert node.t_stop('v1')['stopped'] is True and log[-1] == 'path_empty'   # only the operator's stop clears the follower itself
+
+
+def test_a_rejected_successor_does_not_leave_the_vehicle_reported_as_patrolling():
+    log = []
+    node = planner(log)
+    v = node.vehicles['v1']
+    v.goal = FakeGoalHandle(log, exit_delay_s=0.05)
+    v.mode = 'patrol'
+    node.patrol_clients['v1'].accepted = False
+    out = node.t_patrol('v1', 0, False)
+    assert out['accepted'] is False
+    assert v.goal is None and v.mode == 'stopped', (v.goal, v.mode)
