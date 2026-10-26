@@ -25,10 +25,20 @@ class LocalFrame:
         return lat, lon
 
 
+def _lonlat(cid, i, pos):
+    """lon, lat of an RFC 7946 position [lon, lat(, alt)]; the altitude is ignored."""
+    ok = isinstance(pos, (list, tuple)) and len(pos) >= 2 and all(
+        isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in pos[:2])
+    if not ok:
+        raise ValueError(f'polygon {cid!r}: position {i} is not [lon, lat] of finite numbers: {pos!r}')
+    return pos[0], pos[1]
+
+
 def load_geojson_polygon(path_or_text):
     """First Polygon (or first Polygon feature) in a GeoJSON document; returns (id, [(lat, lon), ...]).
 
-    The closing duplicate vertex is dropped."""
+    Positions may carry an altitude (RFC 7946), it is dropped. The closing duplicate vertex is
+    dropped; an unclosed ring is accepted. ValueError on fewer than 3 vertices or no area."""
     text = path_or_text
     if not text.lstrip().startswith('{'):
         with open(path_or_text) as f:
@@ -45,11 +55,20 @@ def load_geojson_polygon(path_or_text):
         geom = feat.get('geometry') or {}
         if geom.get('type') != 'Polygon':
             continue
-        ring = geom['coordinates'][0]
-        if len(ring) > 1 and ring[0] == ring[-1]:
-            ring = ring[:-1]
         props = feat.get('properties') or {}
         cid = str(props.get('id') or props.get('name') or feat.get('id') or 'corridor')
+        rings = geom.get('coordinates') or []
+        ring = rings[0] if rings and isinstance(rings[0], list) else []
+        ring = [_lonlat(cid, i, pos) for i, pos in enumerate(ring)]
+        if len(ring) > 1 and ring[0] == ring[-1]:
+            ring = ring[:-1]
+        if len(ring) < 3:
+            raise ValueError(f'polygon {cid!r}: ring has {len(ring)} vertices, need at least 3')
+        lon0, lat0 = ring[0]
+        area2 = sum((a[0] - lon0) * (b[1] - lat0) - (b[0] - lon0) * (a[1] - lat0)
+                    for a, b in zip(ring, ring[1:] + ring[:1]))
+        if abs(area2) < 1e-12:   # deg^2, about 0.01 m^2: float noise of collinear vertices, never a corridor
+            raise ValueError(f'polygon {cid!r}: ring has no area (collinear or repeated vertices)')
         return cid, [(lat, lon) for lon, lat in ring]
     raise ValueError('no Polygon in GeoJSON')
 
