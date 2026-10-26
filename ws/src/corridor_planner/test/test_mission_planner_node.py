@@ -1,10 +1,11 @@
 """mission_planner as a real node (planner-2, planner-3). NEEDS ROS: rclpy and a built corridor_msgs.
 
-Run on Thor after `. ./env.sh`:
-    python3 -m pytest -q ws/src/corridor_planner/test/test_mission_planner_node.py
-Skipped where conftest.py had to stand in for rclpy. A fake v1 provides the fix (map 20,20), an odom
-stuck at (0,0) like the Gazebo spawn, and a Patrol server with corridor_nav.patrol_server's cancel
-handling: it notices a cancel at its next 0.5 s poll and then publishes an empty Path."""
+Run on Thor after `. ./env.sh`, on a private domain (the fake v1 publishes on live topics):
+    ROS_DOMAIN_ID=77 REQUIRE_ROS=1 python3 -m pytest -q -rs ws/src/corridor_planner/test/test_mission_planner_node.py
+Skipped where conftest.py had to stand in for rclpy, unless REQUIRE_ROS is set. A fake v1 provides the
+fix (map 20,20), an odom stuck at (0,0) like the Gazebo spawn, and a Patrol server that models the old
+0.5 s-poll cancel handling, the slowest the planner must tolerate; the merged corridor_nav server clears
+an owned route inside its cancel callback, so the real pair is faster than this fake."""
 import math
 import pathlib
 import threading
@@ -14,9 +15,11 @@ import pytest
 import rclpy
 
 if getattr(rclpy, 'STUB', False):
+    if __import__('os').environ.get('REQUIRE_ROS'):
+        pytest.exit('REQUIRE_ROS is set but rclpy is a stand-in: source the ROS workspace first', returncode=3)
     pytest.skip('needs ROS (run on Thor)', allow_module_level=True)
 if __import__('os').environ.get('ROS_DOMAIN_ID', '0') == '42':
-    pytest.skip('publishes a fake v1 on live topics: run with a private domain, e.g. ROS_DOMAIN_ID=77, never on the demo domain 42', allow_module_level=True)
+    pytest.exit('ROS_DOMAIN_ID is the demo domain 42 and this test publishes a fake v1 on live topics: run with ROS_DOMAIN_ID=77', returncode=3)
 
 from geometry_msgs.msg import PoseStamped  # noqa: E402
 from nav_msgs.msg import Odometry, Path  # noqa: E402
