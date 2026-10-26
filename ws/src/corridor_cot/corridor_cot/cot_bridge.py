@@ -14,7 +14,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import String
 
-from corridor_cot.cot import course_from_quaternion, parse_marker, pli_event
+from corridor_cot.cot import course_from_quaternion, parse_marker, pli_payload
 
 
 class CotBridge(Node):
@@ -45,13 +45,7 @@ class CotBridge(Node):
         return s
 
     def send_pli(self):
-        payload = ''
-        for v, st in self.state.items():
-            if 'lat' not in st:
-                continue
-            payload += pli_event(uid=f'corridor-{v}', callsign=v.upper(), lat=st['lat'], lon=st['lon'],
-                                 hae=st.get('hae', 0.0), course_deg=st.get('course', 0.0), speed_mps=st.get('speed', 0.0),
-                                 team=self.get_parameter('team').value)
+        payload = pli_payload(self.state, team=self.get_parameter('team').value)
         if not payload:
             return
         with self.lock:
