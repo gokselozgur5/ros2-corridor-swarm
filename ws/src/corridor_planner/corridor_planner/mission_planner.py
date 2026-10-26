@@ -2,7 +2,8 @@
 
 /mission/request (std_msgs/String) -> Planner.run -> /mission/reply (String) and /mission/llm_trace
 (String, one JSON object per event). Tools read the vehicles' fix/odom/follower status, send Patrol
-goals, publish a one-point Path for goto, cancel for stop. The planner never publishes cmd_vel.
+goals, publish a two-pose Path (fix, target) for goto, cancel for stop. The planner never publishes cmd_vel.
+Vehicles are positioned by their fix through the corridor frame, as the follower does; odom is speed only (#19).
 Refusals and SDK errors become diagnostics on /diagnostics, not crashes.
 """
 import collections
@@ -10,6 +11,7 @@ import json
 import math
 import os
 import threading
+import time
 
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
@@ -31,6 +33,39 @@ from corridor_planner.planner import PLANNING_MODEL, Planner
 from corridor_planner.tools import SCHEMAS
 
 EVENT_NAMES = {GeofenceEvent.EXIT: 'exit', GeofenceEvent.ENTER: 'enter', GeofenceEvent.WARN: 'warn'}
+STOP_TIMEOUT_S = 3.0   # cancel acknowledged and the old goal's result back, together
+
+
+def wait_future(fut, timeout_s):
+    """Block this thread until an rclpy Future is done; False on timeout. Another executor thread
+    delivers the response (reentrant group, multi-threaded executor), as t_patrol already relies on."""
+    done = threading.Event()
+    fut.add_done_callback(lambda _: done.set())
+    return done.wait(timeout_s)
+
+
+def stop_goal(handle, timeout_s=STOP_TIMEOUT_S):
+    """Cancel an action goal and wait until its execute callback has returned.
+
+    patrol_server notices the cancel at its next 0.5 s poll and then publishes an empty Path; a
+    successor route sent before that is erased by it. The result is requested before the cancel so
+    the goal cannot finish and expire in between. Returns 'finished', 'cancel_timeout' or
+    'result_timeout'."""
+    deadline = time.monotonic() + timeout_s
+    result = handle.get_result_async()
+    if not wait_future(handle.cancel_goal_async(), timeout_s):
+        return 'cancel_timeout'
+    if not wait_future(result, max(0.0, deadline - time.monotonic())):
+        return 'result_timeout'
+    return 'finished'
+
+
+def start_xy(frame, fix):
+    """Where a Path for the vehicle starts: its GNSS fix in the corridor frame, None without a fix.
+    Never odom: its position starts at the spawn point and drifts, the follower navigates on the fix (#19)."""
+    if fix is None:
+        return None
+    return frame.to_xy(fix.latitude, fix.longitude)
 
 
 class Vehicle:
@@ -100,14 +135,13 @@ class MissionPlanner(Node):
             d['lat'] = round(v.fix.latitude, 6)
             d['lon'] = round(v.fix.longitude, 6)
             if self.poly:
-                x, y = self.frame.to_xy(v.fix.latitude, v.fix.longitude)
+                x, y = start_xy(self.frame, v.fix)
+                d['x'] = round(x, 1)
+                d['y'] = round(y, 1)
                 sd = signed_distance(x, y, self.poly)
                 d['inside_corridor'] = sd >= 0
                 d['edge_distance_m'] = round(sd, 1)
         if v.odom is not None:
-            p = v.odom.pose.pose.position
-            d['x'] = round(p.x, 1)
-            d['y'] = round(p.y, 1)
             d['speed_mps'] = round(math.hypot(v.odom.twist.twist.linear.x, v.odom.twist.twist.linear.y), 2)
         return d
 
@@ -148,20 +182,20 @@ class MissionPlanner(Node):
         x, y = self.frame.to_xy(float(lat), float(lon))
         if self.poly and signed_distance(x, y, self.poly) < 0:
             return {'accepted': False, 'reason': 'target is outside the corridor'}
+        v = self.vehicles[vehicle]
+        start = start_xy(self.frame, v.fix)
+        if start is None:
+            return {'accepted': False, 'reason': f'no fix from {vehicle} yet'}
         self.t_stop(vehicle)
         path = Path()
         path.header.frame_id = 'map'
         path.header.stamp = self.get_clock().now().to_msg()
-        v = self.vehicles[vehicle]
-        if v.odom is not None:
-            start = PoseStamped(header=path.header)
-            start.pose = v.odom.pose.pose
-            path.poses.append(start)
-        goal = PoseStamped(header=path.header)
-        goal.pose.position.x = x
-        goal.pose.position.y = y
-        goal.pose.orientation.w = 1.0
-        path.poses.append(goal)
+        for px, py in (start, (x, y)):
+            ps = PoseStamped(header=path.header)
+            ps.pose.position.x = px
+            ps.pose.position.y = py
+            ps.pose.orientation.w = 1.0
+            path.poses.append(ps)
         self.path_pubs[vehicle].publish(path)
         v.mode = 'goto'
         return {'accepted': True, 'vehicle': vehicle, 'x': round(x, 1), 'y': round(y, 1)}
@@ -171,9 +205,11 @@ class MissionPlanner(Node):
         v = self.vehicles[vehicle]
         cancelled = False
         if v.goal is not None:
-            v.goal.cancel_goal_async()
-            v.goal = None
+            handle, v.goal = v.goal, None
             cancelled = True
+            status = stop_goal(handle, STOP_TIMEOUT_S)
+            if status != 'finished':
+                self.get_logger().warn(f'{vehicle}: patrol goal not finished {STOP_TIMEOUT_S} s after cancel ({status})')
         self.path_pubs[vehicle].publish(Path())
         v.mode = 'stopped'
         return {'stopped': True, 'vehicle': vehicle, 'cancelled_patrol': cancelled}
