@@ -47,11 +47,22 @@ def _coordinate(text, limit):
     return x if math.isfinite(x) and abs(x) <= limit else None
 
 
-def parse_marker(xml_text):
+def _parse_stamp(text):
+    """CoT timestamp -> aware datetime, or None when missing or in a form we do not read."""
+    for fmt in (ISO, '%Y-%m-%dT%H:%M:%SZ'):
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def parse_marker(xml_text, now=None):
     """A TAK marker (type a-*-G or b-m-p-*) -> dict(uid, callsign, lat, lon, type) or None for other events.
 
-    None also for a marker whose <point> has no usable lat/lon: the 8087 stream is unauthenticated and the
-    reader thread must not die on one bad event."""
+    None also for a marker whose <point> has no usable lat/lon (the 8087 stream is unauthenticated and the
+    reader thread must not die on one bad event) and for one whose stale time has passed at `now` (a replayed
+    or expired placement must not dispatch a vehicle); an unreadable stale is taken as no expiry."""
     try:
         ev = ET.fromstring(xml_text)
     except ET.ParseError:
@@ -60,6 +71,9 @@ def parse_marker(xml_text):
         return None
     cot_type = ev.get('type', '')
     if not (cot_type.startswith('b-m-p') or cot_type.startswith('a-u-G') or cot_type.startswith('a-h-G')):
+        return None
+    stale = _parse_stamp(ev.get('stale'))
+    if stale is not None and stale < (now or datetime.now(timezone.utc)):
         return None
     pt = ev.find('point')
     if pt is None:
