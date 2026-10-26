@@ -120,3 +120,24 @@ def test_following_without_a_fix_or_imu_warns_and_does_not_drive(rig, capfd):
     time.sleep(1.0)
     assert rig.cmds == []
     assert 'no fix' in capfd.readouterr().err
+
+
+# ----- nav-mission-2: a status the owner of a Path can attribute to its own route ------------------
+
+def reports(rig):
+    return [(r.stamp.sec, r.stamp.nanosec, r.frame_id) for r in rig.routes]
+
+
+def test_route_report_carries_the_stamp_of_the_path_it_is_about(rig):
+    rig.send_path([(20.0, 20.0), (100.0, 20.0)], sec=5, nanosec=7)
+    assert until(lambda: (5, 7, 'following') in reports(rig), timeout=3.0), reports(rig)
+    rig.send_path([], sec=9)   # someone else's empty Path
+    assert until(lambda: (9, 0, 'idle') in reports(rig), timeout=3.0), reports(rig)
+    assert rig.statuses[-1] == 'idle'
+
+
+def test_arrival_is_reported_for_the_path_that_arrived(rig):
+    rig.send_path([(20.0, 20.0), (22.0, 20.0)], sec=5, nanosec=7)
+    rig.feed(1.0, 21.5, 20.0)   # within the 1 m arrive tolerance of the end
+    assert until(lambda: (5, 7, 'arrived') in reports(rig), timeout=3.0), reports(rig)
+    assert rig.statuses[-1] == 'arrived'
