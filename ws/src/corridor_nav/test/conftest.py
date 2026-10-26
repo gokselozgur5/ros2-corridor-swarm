@@ -6,6 +6,7 @@ message classes with ROS-like defaults and a Node that records publishers, subsc
 Tests marked `ros` need the real stack (rclpy, corridor_msgs built with colcon) and are skipped here; the
 orchestrator runs them on Thor.
 """
+import os
 import sys
 import time
 import types
@@ -24,7 +25,7 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    if ROS:
+    if ROS or os.environ.get('REQUIRE_ROS'):   # with REQUIRE_ROS the ros fixture fails instead of skipping
         return
     skip = pytest.mark.skip(reason='needs ROS 2: run on Thor')
     for item in items:
@@ -36,10 +37,11 @@ def pytest_collection_modifyitems(config, items):
 def ros():
     """One rclpy context for the whole session (the Thor node tests)."""
     if not ROS:
+        if os.environ.get('REQUIRE_ROS'):
+            pytest.fail('REQUIRE_ROS is set but rclpy is absent: source the ROS workspace first')
         pytest.skip('needs ROS 2')
-    import os
     if os.environ.get('ROS_DOMAIN_ID', '0') == '42':
-        pytest.skip('the node tests publish geofence events and Paths for v1 on live topics: run with a private domain, e.g. ROS_DOMAIN_ID=77, never on the demo domain 42')
+        pytest.fail('ROS_DOMAIN_ID is the demo domain 42: the node tests publish geofence events and Paths for v1 on live topics, run them with ROS_DOMAIN_ID=77')
     import rclpy
     rclpy.init(args=[])   # not pytest's argv; the domain comes from ROS_DOMAIN_ID
     yield
