@@ -38,7 +38,7 @@ def ros():
     if not ROS:
         pytest.skip('needs ROS 2')
     import rclpy
-    rclpy.init()
+    rclpy.init(args=[])   # not pytest's argv; the domain comes from ROS_DOMAIN_ID
     yield
     rclpy.shutdown()
 
