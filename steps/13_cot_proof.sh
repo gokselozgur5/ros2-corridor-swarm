@@ -48,11 +48,12 @@ while time.time() < deadline:
 s.close()
 print('events relayed by the server to the second client in 15 s: ' + (' '.join(f'{u}={n}' for u, n in sorted(seen.items())) or 'none')
       + (' (server closed the listener socket)' if closed else ''))
-missing = [u for u in ('corridor-v1', 'corridor-v2', 'corridor-v3') if not seen[u]]
-print('RELAY PASS' if not missing else 'RELAY FAIL missing ' + ' '.join(missing))
+# the bridge sends each vehicle once a second: a cached registration event alone is one, a live stream is many
+missing = [u for u in ('corridor-v1', 'corridor-v2', 'corridor-v3') if seen[u] < 3]
+print('RELAY PASS' if not missing else 'RELAY FAIL fewer than 3 events for ' + ' '.join(missing))
 PY
 sudo -n docker logs corridor-fts 2>&1 | tail -n +$before | grep -i -m3 "corridor-v\|atak-listener\|error" | cut -c1-160
-connects=$(grep -c "connected to TAK server" /tmp/cot16.log)
+connects=$(grep -c "connected to TAK server" /tmp/cot16.log 2>/dev/null || true); connects=${connects:-0}
 echo "bridge connections: $connects (more than 1 means the server dropped the session)"
 grep -q "^RELAY PASS" /tmp/relay16.txt && [ "$connects" -eq 1 ] && ! grep -q "TAK send failed" /tmp/cot16.log \
   && echo "PROOF 16 PASS (server side: PLI for v1..v3 relayed to a second client; ATAK display needs the emulator)" \
