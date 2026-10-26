@@ -14,11 +14,36 @@ class StubClient:
 
     def create(self, **kwargs):
         self.requests.append(kwargs)
-        return self.responses.pop(0)
+        resp = self.responses.pop(0)
+        if isinstance(resp, Exception):  # an SDK error on that turn
+            raise resp
+        return resp
 
 
 def usage(i=10, o=5):
     return NS(input_tokens=i, output_tokens=o)
+
+
+def tool_use(stop_reason='tool_use', tid='t1'):
+    return NS(stop_reason=stop_reason, usage=usage(), content=[NS(type='tool_use', id=tid, name='stop', input={'vehicle': 'v1'})])
+
+
+def end_turn(text='ok'):
+    return NS(stop_reason='end_turn', usage=usage(), content=[NS(type='text', text=text)])
+
+
+def assert_no_dangling_tool_use(messages):
+    """What the API enforces: every assistant tool_use is answered by a tool_result in the very next message."""
+    for i, m in enumerate(messages):
+        if m['role'] != 'assistant':
+            continue
+        ids = [b.id for b in m['content'] if getattr(b, 'type', '') == 'tool_use']
+        if not ids:
+            continue
+        assert i + 1 < len(messages), f'assistant tool_use {ids} is the last message'
+        nxt = messages[i + 1]
+        answered = [b['tool_use_id'] for b in nxt['content'] if isinstance(b, dict) and b.get('type') == 'tool_result']
+        assert nxt['role'] == 'user' and answered == ids, f'tool_use {ids} not answered by the next message {nxt}'
 
 
 def test_refusal_is_an_outcome_not_an_exception():
@@ -74,6 +99,34 @@ def test_sdk_error_keeps_node_alive():
             raise ConnectionError('offline')
     out = Planner(Bad([]), tools={}, schemas=SCHEMAS).run('hi')
     assert out.error.startswith('ConnectionError') and not out.refused
+
+
+def test_sdk_error_mid_tool_loop_rolls_back_the_whole_exchange():
+    # Turn 1 calls a tool, turn 2 raises (a 429/529/timeout past the SDK's retries). Dropping only the
+    # tool_result would leave the assistant tool_use dangling, and every later request would be a 400.
+    client = StubClient([tool_use(), ConnectionError('offline'), end_turn()])
+    p = Planner(client, tools={'stop': lambda vehicle: {'stopped': True}}, schemas=SCHEMAS)
+    out = p.run('stop v1')
+    assert out.error.startswith('ConnectionError') and out.tool_calls == 1
+    assert_no_dangling_tool_use(p.messages)
+    assert p.messages == []  # same as on turn 1: the failed request is not kept
+    p.run('hi')
+    assert_no_dangling_tool_use(client.requests[-1]['messages'])
+    assert client.requests[-1]['messages'] == [{'role': 'user', 'content': 'hi'}]
+
+
+def test_refusal_mid_tool_loop_rolls_back_the_whole_exchange():
+    client = StubClient([tool_use(),
+                         NS(stop_reason='refusal', stop_details=NS(category='cyber'), content=[], usage=usage(), model='m'),
+                         end_turn()])
+    p = Planner(client, tools={'stop': lambda vehicle: {'stopped': True}}, schemas=SCHEMAS)
+    out = p.run('stop v1')
+    assert out.refused and out.tool_calls == 1
+    assert_no_dangling_tool_use(p.messages)
+    assert p.messages == []
+    p.run('hi')
+    assert_no_dangling_tool_use(client.requests[-1]['messages'])
+    assert client.requests[-1]['messages'] == [{'role': 'user', 'content': 'hi'}]
 
 
 def test_rich_tool_content_passes_blocks_and_trims_trace():
