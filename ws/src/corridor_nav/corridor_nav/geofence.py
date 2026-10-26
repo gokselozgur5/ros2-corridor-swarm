@@ -27,8 +27,11 @@ class LocalFrame:
 
 def _lonlat(cid, i, pos):
     """lon, lat of an RFC 7946 position [lon, lat(, alt)]; the altitude is ignored."""
-    ok = isinstance(pos, (list, tuple)) and len(pos) >= 2 and all(
-        isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in pos[:2])
+    try:
+        ok = isinstance(pos, (list, tuple)) and len(pos) >= 2 and all(
+            isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in pos[:2])
+    except OverflowError:   # an integer too large for a float
+        ok = False
     if not ok:
         raise ValueError(f'polygon {cid!r}: position {i} is not [lon, lat] of finite numbers: {pos!r}')
     return pos[0], pos[1]
@@ -58,7 +61,9 @@ def load_geojson_polygon(path_or_text):
         props = feat.get('properties') or {}
         cid = str(props.get('id') or props.get('name') or feat.get('id') or 'corridor')
         rings = geom.get('coordinates') or []
-        ring = rings[0] if rings and isinstance(rings[0], list) else []
+        if not isinstance(rings, list) or (rings and not isinstance(rings[0], list)):
+            raise ValueError(f'polygon {cid!r}: coordinates must be a list of rings, got {type(rings).__name__}')
+        ring = rings[0] if rings else []
         ring = [_lonlat(cid, i, pos) for i, pos in enumerate(ring)]
         if len(ring) > 1 and ring[0] == ring[-1]:
             ring = ring[:-1]
