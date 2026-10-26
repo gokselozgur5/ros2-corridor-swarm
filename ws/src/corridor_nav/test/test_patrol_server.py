@@ -1,12 +1,17 @@
 """patrol_server on the stub rclpy from conftest: callbacks are called directly, the execute loop runs in a
 thread behind a fake goal handle, and a fake follower answers on the topics the server subscribes to.
 The same scenarios run against real rclpy in test_patrol_server_node.py (Thor)."""
+import pytest
+import rclpy
+
+if hasattr(rclpy, '__file__'):
+    pytest.skip('stub-rclpy tests: test_patrol_server_node.py covers the real stack', allow_module_level=True)
+
 import math
 import threading
 import time
 import types
 
-import pytest
 from builtin_interfaces.msg import Time
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
