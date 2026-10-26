@@ -86,8 +86,10 @@ class RouteOwner:
         self.status = None      # the follower's status for `held`
 
     def next_stamp(self, now_ns):
-        """Unique and increasing, so two Paths never share a stamp even while the clock stands still."""
-        return max(now_ns, self.stamp + 1, 1)
+        """Unique and increasing, so two Paths never share a stamp even while the clock stands still; odd, so a
+        Path another node stamps with now().to_msg() under sim time (a multiple of the clock step, even) never
+        matches a route of this server's."""
+        return max(now_ns, self.stamp + 1, 1) | 1
 
     def published(self, stamp, route):
         self.stamp, self.route, self.pending = stamp, route, True
