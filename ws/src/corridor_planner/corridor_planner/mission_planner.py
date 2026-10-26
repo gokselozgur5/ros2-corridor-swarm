@@ -10,6 +10,7 @@ import json
 import math
 import os
 import threading
+import time
 
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
@@ -31,6 +32,31 @@ from corridor_planner.planner import PLANNING_MODEL, Planner
 from corridor_planner.tools import SCHEMAS
 
 EVENT_NAMES = {GeofenceEvent.EXIT: 'exit', GeofenceEvent.ENTER: 'enter', GeofenceEvent.WARN: 'warn'}
+STOP_TIMEOUT_S = 3.0   # cancel acknowledged and the old goal's result back, together
+
+
+def wait_future(fut, timeout_s):
+    """Block this thread until an rclpy Future is done; False on timeout. Another executor thread
+    delivers the response (reentrant group, multi-threaded executor), as t_patrol already relies on."""
+    done = threading.Event()
+    fut.add_done_callback(lambda _: done.set())
+    return done.wait(timeout_s)
+
+
+def stop_goal(handle, timeout_s=STOP_TIMEOUT_S):
+    """Cancel an action goal and wait until its execute callback has returned.
+
+    patrol_server notices the cancel at its next 0.5 s poll and then publishes an empty Path; a
+    successor route sent before that is erased by it. The result is requested before the cancel so
+    the goal cannot finish and expire in between. Returns 'finished', 'cancel_timeout' or
+    'result_timeout'."""
+    deadline = time.monotonic() + timeout_s
+    result = handle.get_result_async()
+    if not wait_future(handle.cancel_goal_async(), timeout_s):
+        return 'cancel_timeout'
+    if not wait_future(result, max(0.0, deadline - time.monotonic())):
+        return 'result_timeout'
+    return 'finished'
 
 
 class Vehicle:
@@ -171,9 +197,11 @@ class MissionPlanner(Node):
         v = self.vehicles[vehicle]
         cancelled = False
         if v.goal is not None:
-            v.goal.cancel_goal_async()
-            v.goal = None
+            handle, v.goal = v.goal, None
             cancelled = True
+            status = stop_goal(handle, STOP_TIMEOUT_S)
+            if status != 'finished':
+                self.get_logger().warn(f'{vehicle}: patrol goal not finished {STOP_TIMEOUT_S} s after cancel ({status})')
         self.path_pubs[vehicle].publish(Path())
         v.mode = 'stopped'
         return {'stopped': True, 'vehicle': vehicle, 'cancelled_patrol': cancelled}
