@@ -1,14 +1,23 @@
 """cot_bridge node tests. NEEDS ROS: rclpy and the message packages, so they run on Thor
-(`source env.sh && python3 -m pytest -q ws/src/corridor_cot/test/test_cot_bridge_node.py`) and skip where
-ROS is absent. The TAK socket is replaced by a fake that hands the reader thread its chunks and records
+(`ROS_DOMAIN_ID=77 REQUIRE_ROS=1 python3 -m pytest -q -rs ws/src/corridor_cot/test/test_cot_bridge_node.py`,
+on a private domain because the tests publish /v1/fix) and skip where ROS is absent unless REQUIRE_ROS is set. The TAK socket is replaced by a fake that hands the reader thread its chunks and records
 what send_pli writes; the request publisher and the logger are replaced by recorders."""
 import datetime
 import threading
 import time
 
+import os
+
 import pytest
 
-rclpy = pytest.importorskip('rclpy')
+if os.environ.get('REQUIRE_ROS'):
+    import rclpy   # an ImportError here is the failure REQUIRE_ROS asks for
+else:
+    rclpy = pytest.importorskip('rclpy')
+if not hasattr(rclpy, '__file__'):
+    pytest.skip('a stand-in rclpy from another package: the real stack runs these on Thor', allow_module_level=True)
+if os.environ.get('ROS_DOMAIN_ID', '0') == '42':
+    pytest.exit('ROS_DOMAIN_ID is the demo domain 42 and these tests publish /v1/fix: run them with ROS_DOMAIN_ID=77', returncode=3)
 
 from sensor_msgs.msg import NavSatFix, NavSatStatus  # noqa: E402
 
