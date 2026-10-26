@@ -212,6 +212,7 @@ class MissionPlanner(Node):
         if v.goal is None:
             return
         handle, v.goal = v.goal, None
+        v.mode = 'stopped'   # until the successor sets its own; a rejected successor must not leave 'patrol' with no goal
         status = stop_goal(handle, STOP_TIMEOUT_S)
         if status != 'finished':
             self.get_logger().warn(f'{vehicle}: patrol goal not finished {STOP_TIMEOUT_S} s after cancel ({status})')
