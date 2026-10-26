@@ -61,6 +61,17 @@ def test_parse_marker_returns_none_for_unusable_coordinates():
     assert parse_marker(_marker('<point lat="-90" lon="180"/>'))['lat'] == -90.0
 
 
+def test_parse_marker_drops_a_marker_whose_stale_time_has_passed():
+    # cot-4: a stale marker (one way a client or a replaying server signals an expired placement) must not dispatch a vehicle
+    now = datetime(2026, 10, 24, 15, 0, 0, tzinfo=timezone.utc)
+    point = '<point lat="52.7" lon="-2.9"/>'
+    assert parse_marker(_marker(point, stale='2026-10-24T14:59:59.000Z'), now=now) is None
+    assert parse_marker(_marker(point, stale='2026-10-24T14:59:59Z'), now=now) is None
+    assert parse_marker(_marker(point, stale='2026-10-24T15:00:01.000Z'), now=now)['uid'] == 'm'
+    assert parse_marker(_marker(point, stale='garbage'), now=now)['uid'] == 'm'  # unreadable stale: no expiry known
+    assert parse_marker(_marker(point), now=now)['uid'] == 'm'
+
+
 def test_course_from_quaternion():
     # yaw 0 (east) -> course 90; yaw +90 (north) -> course 0
     assert abs(course_from_quaternion(0.0, 1.0) - 90.0) < 1e-6
