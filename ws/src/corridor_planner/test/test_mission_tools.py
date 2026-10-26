@@ -38,7 +38,7 @@ def test_stop_returns_only_after_the_old_goal_has_exited():
     old = FakeGoalHandle(log, exit_delay_s=0.2)
     node.vehicles['v1'].goal = old
     out = node.t_stop('v1')
-    assert out == {'stopped': True, 'vehicle': 'v1', 'cancelled_patrol': True}
+    assert out == {'stopped': True, 'vehicle': 'v1', 'cancelled_patrol': True, 'finished': True}
     assert old.result_future.done(), f'returned before the old goal exited: {log}'
     assert old.result_requests == 1
     assert node.vehicles['v1'].goal is None
@@ -162,3 +162,38 @@ def test_summary_without_a_corridor_has_no_xy():
     v.odom = Odometry()
     d = node._summary('v1')
     assert 'x' not in d and 'y' not in d and d['lat'] == 52.7001
+
+
+# ----- review follow-ups: the follower stops at once, the tool says whether the old goal finished, goto starts where the vehicle is after the stop
+
+def test_stop_publishes_the_empty_path_right_after_the_cancel_not_after_the_old_goal_exited():
+    log = []
+    node = planner(log)
+    node.vehicles['v1'].goal = FakeGoalHandle(log, exit_delay_s=0.2)
+    node.t_stop('v1')
+    assert log.index('cancel') < log.index('path_empty') < log.index('old_result'), log
+
+
+def test_stop_reports_whether_the_old_goal_finished(monkeypatch):
+    monkeypatch.setattr(mp, 'STOP_TIMEOUT_S', 0.2)
+    log = []
+    node = planner(log)
+    node.vehicles['v1'].goal = FakeGoalHandle(log, exit_delay_s=0.05)
+    assert node.t_stop('v1')['finished'] is True
+    node.vehicles['v1'].goal = FakeGoalHandle(log, exit_delay_s=None)
+    assert node.t_stop('v1')['finished'] is False
+    assert node.t_stop('v1')['finished'] is True   # nothing to cancel
+
+
+def test_goto_starts_where_the_vehicle_is_after_the_stop_not_before():
+    import threading
+    log = []
+    node = planner(log)
+    v = node.vehicles['v1']
+    v.fix = fix_at(node.frame, 20.0, 20.0)
+    v.goal = FakeGoalHandle(log, exit_delay_s=0.2)
+    threading.Timer(0.05, lambda: setattr(v, 'fix', fix_at(node.frame, 23.0, 20.0))).start()   # it keeps driving while the old goal exits
+    lat, lon = node.frame.to_latlon(100.0, 20.0)
+    assert node.t_goto('v1', lat, lon)['accepted'] is True
+    start = node.path_pubs['v1'].published[-1].poses[0].pose.position
+    assert math.isclose(start.x, 23.0, abs_tol=1e-6), start.x
