@@ -6,13 +6,17 @@ import threading
 import types
 
 import pytest
+from builtin_interfaces.msg import Time
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import Header, String
 
 from conftest import until
 from corridor_msgs.action import Patrol
-from corridor_nav.patrol_server import PatrolServer, inset_polygon
+from corridor_msgs.msg import GeofenceEvent
+from corridor_nav.patrol_server import PatrolServer, RouteOwner, Run, inset_polygon, verdict
+
+FOREIGN = Time(sec=123, nanosec=0)   # a Path stamped by some other publisher
 
 GEOJSON = '''{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"id":"demo"},
 "geometry":{"type":"Polygon","coordinates":[[[-3.0000,52.7000],[-2.9970,52.7000],[-2.9970,52.7018],[-3.0000,52.7018],[-3.0000,52.7000]]]}}]}'''
@@ -117,6 +121,25 @@ def first_vertex(path):
     return path.poses[0].pose.position.x, path.poses[0].pose.position.y
 
 
+def empties(srv):
+    return [p for p in srv.publishers['path'].sent if not p.poses]
+
+
+def patrolling(node_params, laps=1):
+    """A server with a goal under way: route published and the follower following it."""
+    srv = make_server(node_params)
+    srv.subscriptions['fix'](fix_at(srv, 20.0, 20.0))
+    handle = FakeHandle(srv, laps=laps)
+    accept(srv, handle)
+    assert until(lambda: routes(srv)), 'no route published'
+    report(srv, 'following')
+    return srv, handle
+
+
+def breach(srv):
+    srv.subscriptions['/fleet/geofence_events'](GeofenceEvent(vehicle='v1', corridor_id='demo', type=GeofenceEvent.EXIT, distance_m=-3.0))
+
+
 # ----- nav-mission-3: position from the fix -----------------------------------------------------
 
 def test_lap_starts_at_the_vertex_nearest_the_fix_not_the_odometry(node_params):
@@ -152,3 +175,93 @@ def test_feedback_distance_and_next_waypoint_follow_the_fix(node_params):
     assert fb, 'feedback never reflected the fix'
     assert (fb.next_waypoint.x, fb.next_waypoint.y) == pytest.approx(route[1])
     stop(srv, handle)
+
+
+# ----- nav-mission-2: only a status about the server's own route means anything -----------------
+
+def test_route_owner_follows_the_stamps():
+    o = RouteOwner()
+    assert not o.owns()
+    s1 = o.next_stamp(5_000)
+    o.published(s1, route=True)
+    assert o.owns()                      # in flight: ours until the follower says otherwise
+    o.report(s1, 'following')
+    assert o.owns() and not o.arrived()
+    o.report(s1, 'arrived')
+    assert o.arrived()
+    o.report(123, 'following')           # someone else's Path took the follower
+    assert not o.owns() and not o.arrived()
+    o.published(o.next_stamp(5_000), route=False)   # a clear is nothing to own
+    assert not o.owns()
+
+
+def test_stamps_are_unique_even_while_the_clock_stands_still():
+    o = RouteOwner()
+    a = o.next_stamp(0)
+    o.published(a, True)
+    b = o.next_stamp(0)
+    o.published(b, True)
+    assert (a, b, o.next_stamp(10**12)) == (1, 2, 10**12)
+
+
+def test_verdict_precedence():
+    o = RouteOwner()
+    s = o.next_stamp(1)
+    o.published(s, True)
+    o.report(s, 'following')
+    run = Run(handle=None, laps=1)
+    assert verdict(run, o, False) is None
+    o.report(s, 'arrived')
+    assert verdict(run, o, False) == 'lap'
+    o.report(0, 'idle')
+    assert verdict(run, o, False) == 'preempted'
+    run.breached = True
+    assert verdict(run, o, False) == 'geofence'
+    assert verdict(run, o, True) == 'cancelled'
+
+
+def test_own_arrival_completes_the_lap(node_params):
+    srv, handle = patrolling(node_params, laps=1)
+    report(srv, 'arrived')
+    assert until(handle.finished)
+    assert handle.state == 'succeeded' and handle.result.result == 'done' and handle.result.laps_done == 1
+
+
+def test_foreign_arrival_is_not_a_lap_and_does_not_resend_the_route(node_params):
+    srv, handle = patrolling(node_params, laps=2)
+    # A goto Path from the planner took the follower; the goto arriving is not a patrol lap.
+    report(srv, 'following', stamp=FOREIGN)
+    report(srv, 'arrived', stamp=FOREIGN)
+    assert until(handle.finished), 'goal still running after another node took the follower'
+    assert handle.result.laps_done == 0 and handle.result.result != 'done'
+    assert len(routes(srv)) == 1, 'patrol route re-sent over the goto'
+
+
+def test_foreign_empty_path_ends_the_goal_as_preempted_not_done(node_params):
+    srv, handle = patrolling(node_params, laps=1)
+    report(srv, 'idle', stamp=Time())   # wasd, clicked_goal or a planner stop on a goal it does not track
+    assert until(handle.finished)
+    assert handle.state == 'aborted' and handle.result.result == 'preempted'
+
+
+def test_geofence_exit_clears_the_route_when_the_monitor_does_not(node_params):
+    srv, handle = patrolling(node_params, laps=0)
+    breach(srv)   # cancel_on_exit false: no empty Path from the monitor
+    assert until(handle.finished)
+    assert handle.state == 'aborted' and handle.result.result == 'geofence'
+    assert empties(srv), 'the vehicle keeps driving the lap outside the corridor'
+
+
+def test_geofence_exit_is_geofence_even_when_the_monitor_stopped_the_follower_first(node_params):
+    srv, handle = patrolling(node_params, laps=0)
+    breach(srv)
+    report(srv, 'idle', stamp=Time())   # the monitor's own empty Path, published right after its event
+    assert until(handle.finished)
+    assert handle.result.result == 'geofence'
+
+
+def test_cancel_does_not_clear_a_route_the_server_no_longer_owns(node_params):
+    srv, handle = patrolling(node_params, laps=0)
+    report(srv, 'following', stamp=FOREIGN)   # a goto replaced the patrol route
+    stop(srv, handle)
+    assert empties(srv) == [], 'cancel killed the goto with an empty Path'
