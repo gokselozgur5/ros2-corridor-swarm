@@ -26,6 +26,22 @@ def test_parse_marker_accepts_waypoint_and_rejects_pli():
     assert parse_marker('<not xml') is None
 
 
+def _marker(point, uid='m', stale=None):
+    attrs = f' stale="{stale}"' if stale else ''
+    return f'<event version="2.0" uid="{uid}" type="b-m-p-w"{attrs}>{point}<detail><contact callsign="X"/></detail></event>'
+
+
+def test_parse_marker_returns_none_for_unusable_coordinates():
+    # cot-1: a matching-type event with a broken <point> must be ignored, never raise out to the reader thread
+    assert parse_marker(_marker('<point lon="-2.9"/>')) is None                 # lat missing: float(None)
+    assert parse_marker(_marker('<point lat="abc" lon="-2.9"/>')) is None       # float('abc')
+    assert parse_marker(_marker('<point lat="nan" lon="-2.9"/>')) is None
+    assert parse_marker(_marker('<point lat="52.7" lon="1e400"/>')) is None     # inf
+    assert parse_marker(_marker('<point lat="999" lon="-2.9"/>')) is None
+    assert parse_marker(_marker('<point lat="52.7" lon="-181"/>')) is None
+    assert parse_marker(_marker('<point lat="-90" lon="180"/>'))['lat'] == -90.0
+
+
 def test_course_from_quaternion():
     # yaw 0 (east) -> course 90; yaw +90 (north) -> course 0
     assert abs(course_from_quaternion(0.0, 1.0) - 90.0) < 1e-6

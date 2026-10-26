@@ -25,8 +25,20 @@ def pli_event(uid, callsign, lat, lon, hae=0.0, course_deg=0.0, speed_mps=0.0, c
     return ET.tostring(ev, encoding='unicode')
 
 
+def _coordinate(text, limit):
+    """Attribute text -> float within [-limit, limit], or None when missing, non-numeric, nan or inf."""
+    try:
+        x = float(text)
+    except (TypeError, ValueError):
+        return None
+    return x if math.isfinite(x) and abs(x) <= limit else None
+
+
 def parse_marker(xml_text):
-    """A TAK marker (type a-*-G or b-m-p-*) -> dict(uid, callsign, lat, lon, type) or None for other events."""
+    """A TAK marker (type a-*-G or b-m-p-*) -> dict(uid, callsign, lat, lon, type) or None for other events.
+
+    None also for a marker whose <point> has no usable lat/lon: the 8087 stream is unauthenticated and the
+    reader thread must not die on one bad event."""
     try:
         ev = ET.fromstring(xml_text)
     except ET.ParseError:
@@ -39,9 +51,12 @@ def parse_marker(xml_text):
     pt = ev.find('point')
     if pt is None:
         return None
+    lat, lon = _coordinate(pt.get('lat'), 90.0), _coordinate(pt.get('lon'), 180.0)
+    if lat is None or lon is None:
+        return None
     contact = ev.find('detail/contact')
     return {'uid': ev.get('uid', ''), 'callsign': contact.get('callsign', '') if contact is not None else '',
-            'lat': float(pt.get('lat')), 'lon': float(pt.get('lon')), 'type': cot_type}
+            'lat': lat, 'lon': lon, 'type': cot_type}
 
 
 def course_from_quaternion(z, w):
