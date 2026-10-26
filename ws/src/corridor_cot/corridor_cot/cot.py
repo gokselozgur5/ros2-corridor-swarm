@@ -25,8 +25,44 @@ def pli_event(uid, callsign, lat, lon, hae=0.0, course_deg=0.0, speed_mps=0.0, c
     return ET.tostring(ev, encoding='unicode')
 
 
-def parse_marker(xml_text):
-    """A TAK marker (type a-*-G or b-m-p-*) -> dict(uid, callsign, lat, lon, type) or None for other events."""
+def pli_payload(state, t=0.0, fix_timeout_s=float('inf'), team='Cyan', now=None):
+    """One PLI per vehicle in state ({name: {lat, lon, hae, course, speed, t}}) whose fix is younger than
+    fix_timeout_s at time t, concatenated. A vehicle that stops reporting gets no further events, so its
+    last one goes stale on the TAK side instead of being re-sent as a fresh machine-GPS position."""
+    payload = ''
+    for v, st in state.items():
+        if 'lat' not in st or t - st.get('t', t) > fix_timeout_s:
+            continue
+        payload += pli_event(uid=f'corridor-{v}', callsign=v.upper(), lat=st['lat'], lon=st['lon'], hae=st.get('hae', 0.0),
+                             course_deg=st.get('course', 0.0), speed_mps=st.get('speed', 0.0), team=team, now=now)
+    return payload
+
+
+def _coordinate(text, limit):
+    """Attribute text -> float within [-limit, limit], or None when missing, non-numeric, nan or inf."""
+    try:
+        x = float(text)
+    except (TypeError, ValueError):
+        return None
+    return x if math.isfinite(x) and abs(x) <= limit else None
+
+
+def _parse_stamp(text):
+    """CoT timestamp -> aware datetime, or None when missing or in a form we do not read."""
+    for fmt in (ISO, '%Y-%m-%dT%H:%M:%SZ'):
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def parse_marker(xml_text, now=None):
+    """A TAK marker (type a-*-G or b-m-p-*) -> dict(uid, callsign, lat, lon, type) or None for other events.
+
+    None also for a marker whose <point> has no usable lat/lon (the 8087 stream is unauthenticated and the
+    reader thread must not die on one bad event) and for one whose stale time has passed at `now` (a replayed
+    or expired placement must not dispatch a vehicle); an unreadable stale is taken as no expiry."""
     try:
         ev = ET.fromstring(xml_text)
     except ET.ParseError:
@@ -36,12 +72,42 @@ def parse_marker(xml_text):
     cot_type = ev.get('type', '')
     if not (cot_type.startswith('b-m-p') or cot_type.startswith('a-u-G') or cot_type.startswith('a-h-G')):
         return None
+    stale = _parse_stamp(ev.get('stale'))
+    if stale is not None and stale < (now or datetime.now(timezone.utc)):
+        return None
     pt = ev.find('point')
     if pt is None:
         return None
+    lat, lon = _coordinate(pt.get('lat'), 90.0), _coordinate(pt.get('lon'), 180.0)
+    if lat is None or lon is None:
+        return None
     contact = ev.find('detail/contact')
     return {'uid': ev.get('uid', ''), 'callsign': contact.get('callsign', '') if contact is not None else '',
-            'lat': float(pt.get('lat')), 'lon': float(pt.get('lon')), 'type': cot_type}
+            'lat': lat, 'lon': lon, 'type': cot_type}
+
+
+def _metres(a, b):
+    """Flat-earth distance between two (lat, lon) pairs; good to a few percent over the tens of metres it is used for."""
+    k = 111320.0
+    return math.hypot((b[0] - a[0]) * k, (b[1] - a[1]) * k * math.cos(math.radians((a[0] + b[0]) / 2.0)))
+
+
+class MarkerGate:
+    """Decides which marker events become mission requests: a uid passes the first time and again only once it
+    has moved by `move_m`. ATAK re-sends the same uid on a rename after the auto callsign, on a refresh and
+    through a second client; each of those cost a planning run or was dropped by the planner's busy guard."""
+
+    def __init__(self, move_m=5.0):
+        self.move_m = move_m
+        self.sent = {}
+
+    def admit(self, marker):
+        here = (marker['lat'], marker['lon'])
+        last = self.sent.get(marker['uid'])
+        if last is not None and _metres(last, here) < self.move_m:
+            return False
+        self.sent[marker['uid']] = here
+        return True
 
 
 def course_from_quaternion(z, w):
