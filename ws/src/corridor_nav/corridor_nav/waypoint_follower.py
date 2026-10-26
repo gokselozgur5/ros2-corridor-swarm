@@ -25,9 +25,14 @@ def yaw_from_quaternion(q):
     return math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
 
+def stale_inputs(now_ns, received_ns, timeout_s):
+    """Names of the inputs whose last message arrived more than timeout_s ago; received_ns maps name -> ns."""
+    return [name for name, t in received_ns.items() if (now_ns - t) * 1e-9 > timeout_s]
+
+
 class WaypointFollower(Node):
-    def __init__(self):
-        super().__init__('waypoint_follower')
+    def __init__(self, **node_kwargs):
+        super().__init__('waypoint_follower', **node_kwargs)
         self.declare_parameter('speed_mps', 2.0)
         self.declare_parameter('lookahead_m', 4.0)
         self.declare_parameter('arrive_tolerance_m', 1.0)
@@ -41,8 +46,9 @@ class WaypointFollower(Node):
         self.path = []
         self.segment = 0
         self.fix = None
-        self.fix_stamp = None
+        self.fix_stamp = None       # ns of receipt, for the watchdog
         self.heading = None
+        self.heading_stamp = None
         self.status = 'idle'
 
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
@@ -57,10 +63,11 @@ class WaypointFollower(Node):
 
     def on_fix(self, msg):
         self.fix = (msg.latitude, msg.longitude)
-        self.fix_stamp = self.get_clock().now()
+        self.fix_stamp = self.get_clock().now().nanoseconds
 
     def on_imu(self, msg):
         self.heading = yaw_from_quaternion(msg.orientation)
+        self.heading_stamp = self.get_clock().now().nanoseconds
 
     def on_path(self, msg):
         self.path = [(ps.pose.position.x, ps.pose.position.y) for ps in msg.poses]
@@ -78,12 +85,15 @@ class WaypointFollower(Node):
     def tick(self):
         if self.status != 'following':
             return
-        if self.fix is None or self.heading is None:
+        missing = [name for name, value in (('fix', self.fix), ('imu', self.heading)) if value is None]
+        if missing:
+            self.get_logger().warn(f'following, but no {" or ".join(missing)} received yet: not driving', throttle_duration_sec=5.0)
             return
-        age = (self.get_clock().now() - self.fix_stamp).nanoseconds * 1e-9
-        if age > self.get_parameter('pose_timeout_s').value:
+        stale = stale_inputs(self.get_clock().now().nanoseconds, {'fix': self.fix_stamp, 'imu': self.heading_stamp},
+                             self.get_parameter('pose_timeout_s').value)
+        if stale:
             self.cmd_pub.publish(Twist())
-            self.get_logger().warn('fix stale, holding', throttle_duration_sec=5.0)
+            self.get_logger().warn(f'{" and ".join(stale)} stale, holding', throttle_duration_sec=5.0)
             return
         x, y, yaw = pose_from_fix(self.frame, *self.fix, self.heading, self.get_parameter('heading_offset_rad').value)
         cmd = step(x, y, yaw, self.path,
