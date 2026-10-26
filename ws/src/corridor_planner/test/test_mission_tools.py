@@ -197,3 +197,24 @@ def test_goto_starts_where_the_vehicle_is_after_the_stop_not_before():
     assert node.t_goto('v1', lat, lon)['accepted'] is True
     start = node.path_pubs['v1'].published[-1].poses[0].pose.position
     assert math.isclose(start.x, 23.0, abs_tol=1e-6), start.x
+
+
+# ----- final review: patrol and goto cancel the tracked goal without an empty Path of their own; the successor
+# route replaces what the follower holds, and two DDS writers racing (planner's Path() vs the server's route)
+# could otherwise leave the new goal 'preempted' with the vehicle idle
+
+def test_patrol_and_goto_publish_no_empty_path_of_their_own():
+    log = []
+    node = planner(log)
+    assert node.t_patrol('v1', 0, False)['accepted'] is True
+    assert 'path_empty' not in log, log                      # nothing tracked: the server's route replaces the follower's Path
+    node.vehicles['v1'].goal = FakeGoalHandle(log, exit_delay_s=0.05)
+    assert node.t_patrol('v1', 0, True)['accepted'] is True
+    assert 'path_empty' not in log, log                      # tracked goal: the server clears an owned route in its cancel callback
+    v = node.vehicles['v1']
+    v.goal = FakeGoalHandle(log, exit_delay_s=0.05)
+    v.fix = fix_at(node.frame, 20.0, 20.0)
+    lat, lon = node.frame.to_latlon(100.0, 20.0)
+    assert node.t_goto('v1', lat, lon)['accepted'] is True
+    assert 'path_empty' not in log and log.count('path') == 1, log
+    assert node.t_stop('v1')['stopped'] is True and log[-1] == 'path_empty'   # only the operator's stop clears the follower itself

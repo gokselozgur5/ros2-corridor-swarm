@@ -47,10 +47,11 @@ def wait_future(fut, timeout_s):
 def stop_goal(handle, timeout_s=STOP_TIMEOUT_S, after_cancel_sent=None):
     """Cancel an action goal and wait until its execute callback has returned.
 
-    patrol_server notices the cancel at its next 0.5 s poll and then publishes an empty Path; a
-    successor route sent before that is erased by it. The result is requested before the cancel so
-    the goal cannot finish and expire in between. `after_cancel_sent` runs once the cancel request is
-    out and before any waiting: the follower's own stop must not wait for the server's poll.
+    patrol_server clears the follower inside its cancel callback (only while it still owns the route)
+    and its loop exits at the next wake; a successor sent before that exit would race the old loop for
+    the follower's path. The result is requested before the cancel so the goal cannot finish and expire
+    in between. `after_cancel_sent` runs once the cancel request is out and before any waiting: the
+    operator's stop publishes its own empty Path there, belt and braces for a server that is gone.
     Returns 'finished', 'cancel_timeout' or 'result_timeout'."""
     deadline = time.monotonic() + timeout_s
     result = handle.get_result_async()
@@ -165,12 +166,10 @@ class MissionPlanner(Node):
         client = self.patrol_clients[vehicle]
         if not client.wait_for_server(timeout_sec=2.0):
             raise RuntimeError(f'no patrol server for {vehicle}')
-        self.t_stop(vehicle)
+        self._cancel_tracked(vehicle)
         goal = Patrol.Goal(vehicle=vehicle, corridor_id=self.corridor_id, laps=int(laps), speed_mps=0.0, clockwise=bool(clockwise))
         fut = client.send_goal_async(goal)
-        done = threading.Event()
-        fut.add_done_callback(lambda f: done.set())
-        if not done.wait(3.0):
+        if not wait_future(fut, 3.0):
             raise RuntimeError('patrol goal not acknowledged in 3 s')
         handle = fut.result()
         if not handle.accepted:
@@ -190,7 +189,7 @@ class MissionPlanner(Node):
         start = start_xy(self.frame, v.fix)
         if start is None:
             return {'accepted': False, 'reason': f'no fix from {vehicle} yet'}
-        self.t_stop(vehicle)
+        self._cancel_tracked(vehicle)
         start = start_xy(self.frame, v.fix) or start   # the vehicle kept moving while the old goal exited
         path = Path()
         path.header.frame_id = 'map'
@@ -204,6 +203,18 @@ class MissionPlanner(Node):
         self.path_pubs[vehicle].publish(path)
         v.mode = 'goto'
         return {'accepted': True, 'vehicle': vehicle, 'x': round(x, 1), 'y': round(y, 1)}
+
+    def _cancel_tracked(self, vehicle):
+        """Cancel the goal tracked for the vehicle and wait for its exit, without an empty Path of our own: the
+        successor route or Path replaces what the follower holds, and the server clears an owned route in its
+        cancel callback. An extra Path() here would race the server's route on a second DDS writer."""
+        v = self.vehicles[vehicle]
+        if v.goal is None:
+            return
+        handle, v.goal = v.goal, None
+        status = stop_goal(handle, STOP_TIMEOUT_S)
+        if status != 'finished':
+            self.get_logger().warn(f'{vehicle}: patrol goal not finished {STOP_TIMEOUT_S} s after cancel ({status})')
 
     def t_stop(self, vehicle):
         self._check(vehicle)
