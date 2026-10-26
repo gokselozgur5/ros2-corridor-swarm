@@ -207,7 +207,7 @@ def test_stamps_are_unique_even_while_the_clock_stands_still():
     o.published(a, True)
     b = o.next_stamp(0)
     o.published(b, True)
-    assert (a, b, o.next_stamp(10**12)) == (1, 2, 10**12)
+    assert (a, b, o.next_stamp(10**12)) == (1, 3, 10**12 + 1)   # unique, increasing, and odd
 
 
 def test_verdict_precedence():
