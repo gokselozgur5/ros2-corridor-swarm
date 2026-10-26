@@ -93,7 +93,10 @@ class Planner:
             uses = [b for b in resp.content if getattr(b, 'type', '') == 'tool_use']
             if resp.stop_reason != 'tool_use' or not uses:
                 self.trace.append({'event': 'reply', 'text': out.text, 'stop_reason': resp.stop_reason})
-                self._trim()
+                if uses:  # cut by max_tokens with tool calls that will not run: nothing to answer them with
+                    del self.messages[start:]
+                else:
+                    self._trim()
                 return out
             results = []
             for use in uses:

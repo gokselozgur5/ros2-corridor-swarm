@@ -129,6 +129,24 @@ def test_refusal_mid_tool_loop_rolls_back_the_whole_exchange():
     assert client.requests[-1]['messages'] == [{'role': 'user', 'content': 'hi'}]
 
 
+def test_max_tokens_with_tool_use_blocks_keeps_no_unanswered_tool_use():
+    # Turn 2 is cut by max_tokens after a complete tool_use block. The loop does not run it, so the
+    # assistant message must not stay in history either: a tool_use with no tool_result is a 400.
+    truncated = NS(stop_reason='max_tokens', usage=usage(), content=[
+        NS(type='text', text='now v2'), NS(type='tool_use', id='t2', name='stop', input={'vehicle': 'v2'})])
+    calls = []
+    client = StubClient([tool_use(), truncated, end_turn()])
+    p = Planner(client, tools={'stop': lambda vehicle: calls.append(vehicle) or {'stopped': True}}, schemas=SCHEMAS)
+    out = p.run('stop v1 then v2')
+    assert calls == ['v1'] and out.tool_calls == 1 and out.text == 'now v2'
+    assert p.trace[-1] == {'event': 'reply', 'text': 'now v2', 'stop_reason': 'max_tokens'}
+    assert_no_dangling_tool_use(p.messages)
+    assert p.messages == []
+    p.run('hi')
+    assert_no_dangling_tool_use(client.requests[-1]['messages'])
+    assert client.requests[-1]['messages'] == [{'role': 'user', 'content': 'hi'}]
+
+
 def test_rich_tool_content_passes_blocks_and_trims_trace():
     blocks = [{'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/png', 'data': 'AAAA'}},
               {'type': 'text', 'text': 'camera v1'}]
