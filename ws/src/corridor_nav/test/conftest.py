@@ -257,7 +257,8 @@ def install_stubs():
     rclpy_mod.node = module('rclpy.node', Node=Node)
     rclpy_mod.parameter = module('rclpy.parameter', Parameter=Parameter)
     rclpy_mod.action = module('rclpy.action', ActionServer=ActionServer, GoalResponse=GoalResponse, CancelResponse=CancelResponse)
-    rclpy_mod.callback_groups = module('rclpy.callback_groups', ReentrantCallbackGroup=type('ReentrantCallbackGroup', (), {}))
+    rclpy_mod.callback_groups = module('rclpy.callback_groups', ReentrantCallbackGroup=type('ReentrantCallbackGroup', (), {}),
+                                       MutuallyExclusiveCallbackGroup=type('MutuallyExclusiveCallbackGroup', (), {}))
     rclpy_mod.executors = module('rclpy.executors', MultiThreadedExecutor=type('MultiThreadedExecutor', (), {}))
     rclpy_mod.qos = module('rclpy.qos', QoSProfile=QoSProfile, DurabilityPolicy=DurabilityPolicy)
     module('geometry_msgs').msg = module('geometry_msgs.msg', Point=Point, Pose=Pose, PoseStamped=PoseStamped,
