@@ -1,8 +1,9 @@
 """Patrol action server: laps along the corridor polygon, driven through the waypoint follower.
 
 Runs in a vehicle namespace. Goal -> a Path on `path` (polygon vertices inset by `inset_m`,
-starting at the vertex nearest the vehicle); progress from `odom` and `follower/status`.
-Cancel or a geofence EXIT for this vehicle stops the lap.
+starting at the vertex nearest the vehicle); the vehicle's position comes from `fix` through the
+corridor's LocalFrame, like the follower's (#19: odometry starts at the spawn and drifts), progress
+from `follower/status`. Cancel or a geofence EXIT for this vehicle stops the lap.
 """
 import math
 import threading
@@ -10,11 +11,12 @@ import time
 
 import rclpy
 from geometry_msgs.msg import Point, PoseStamped
-from nav_msgs.msg import Odometry, Path
+from nav_msgs.msg import Path
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import String
 
 from corridor_msgs.action import Patrol
@@ -51,8 +53,8 @@ def lap_route(poly, start_xy, clockwise):
 
 
 class PatrolServer(Node):
-    def __init__(self):
-        super().__init__('patrol_server')
+    def __init__(self, **node_kwargs):
+        super().__init__('patrol_server', **node_kwargs)
         self.declare_parameter('corridor_geojson', '')
         self.declare_parameter('vehicle', 'v1')
         self.declare_parameter('inset_m', 15.0)
@@ -70,7 +72,7 @@ class PatrolServer(Node):
         self.lock = threading.Lock()
         cb = ReentrantCallbackGroup()
         self.path_pub = self.create_publisher(Path, 'path', 10)
-        self.create_subscription(Odometry, 'odom', self.on_odom, 20, callback_group=cb)
+        self.create_subscription(NavSatFix, 'fix', self.on_fix, 20, callback_group=cb)
         self.create_subscription(String, 'follower/status', self.on_status, 10, callback_group=cb)
         self.create_subscription(GeofenceEvent, '/fleet/geofence_events', self.on_geofence, 10, callback_group=cb)
         self.server = ActionServer(self, Patrol, 'patrol', execute_callback=self.execute,
@@ -78,9 +80,8 @@ class PatrolServer(Node):
                                    callback_group=cb)
         self.get_logger().info(f'{self.vehicle}: patrol server on corridor {self.corridor_id}')
 
-    def on_odom(self, msg):
-        p = msg.pose.pose.position
-        self.pose = (p.x, p.y)
+    def on_fix(self, msg):
+        self.pose = self.frame.to_xy(msg.latitude, msg.longitude)
 
     def on_status(self, msg):
         self.status = msg.data
