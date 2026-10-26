@@ -57,33 +57,43 @@ def _parse_stamp(text):
     return None
 
 
+def marker_or_reason(xml_text, now=None):
+    """(marker, None) for a usable TAK marker, (None, reason) for a marker that is dropped, (None, None)
+    for any other event. The reason is for the bridge's log: the 8087 stream is unauthenticated and a
+    silently vanishing marker is indistinguishable from a dead bridge."""
+    try:
+        ev = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return None, None
+    if ev.tag != 'event':
+        return None, None
+    cot_type = ev.get('type', '')
+    if not (cot_type.startswith('b-m-p') or cot_type.startswith('a-u-G') or cot_type.startswith('a-h-G')):
+        return None, None
+    uid = ev.get('uid', '')
+    now = now or datetime.now(timezone.utc)
+    stale = _parse_stamp(ev.get('stale'))
+    if stale is not None and stale < now:
+        return None, f'marker {uid!r} stale since {ev.get("stale")} ({(now - stale).total_seconds():.0f} s ago)'
+    pt = ev.find('point')
+    if pt is None:
+        return None, f'marker {uid!r} has no point'
+    lat, lon = _coordinate(pt.get('lat'), 90.0), _coordinate(pt.get('lon'), 180.0)
+    if lat is None or lon is None:
+        return None, f'marker {uid!r} has no usable lat/lon: lat={pt.get("lat")!r} lon={pt.get("lon")!r}'
+    contact = ev.find('detail/contact')
+    return {'uid': uid, 'callsign': contact.get('callsign', '') if contact is not None else '',
+            'lat': lat, 'lon': lon, 'type': cot_type}, None
+
+
 def parse_marker(xml_text, now=None):
     """A TAK marker (type a-*-G or b-m-p-*) -> dict(uid, callsign, lat, lon, type) or None for other events.
 
     None also for a marker whose <point> has no usable lat/lon (the 8087 stream is unauthenticated and the
     reader thread must not die on one bad event) and for one whose stale time has passed at `now` (a replayed
-    or expired placement must not dispatch a vehicle); an unreadable stale is taken as no expiry."""
-    try:
-        ev = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return None
-    if ev.tag != 'event':
-        return None
-    cot_type = ev.get('type', '')
-    if not (cot_type.startswith('b-m-p') or cot_type.startswith('a-u-G') or cot_type.startswith('a-h-G')):
-        return None
-    stale = _parse_stamp(ev.get('stale'))
-    if stale is not None and stale < (now or datetime.now(timezone.utc)):
-        return None
-    pt = ev.find('point')
-    if pt is None:
-        return None
-    lat, lon = _coordinate(pt.get('lat'), 90.0), _coordinate(pt.get('lon'), 180.0)
-    if lat is None or lon is None:
-        return None
-    contact = ev.find('detail/contact')
-    return {'uid': ev.get('uid', ''), 'callsign': contact.get('callsign', '') if contact is not None else '',
-            'lat': lat, 'lon': lon, 'type': cot_type}
+    or expired placement must not dispatch a vehicle); an unreadable stale is taken as no expiry.
+    marker_or_reason says why a marker was dropped."""
+    return marker_or_reason(xml_text, now)[0]
 
 
 def _metres(a, b):
