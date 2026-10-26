@@ -16,7 +16,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from std_msgs.msg import String
 
-from corridor_cot.cot import MarkerGate, course_from_quaternion, parse_marker, pli_payload
+from corridor_cot.cot import MarkerGate, course_from_quaternion, marker_or_reason, pli_payload
 
 
 class CotBridge(Node):
@@ -100,7 +100,9 @@ class CotBridge(Node):
                     self.get_logger().warn(f'CoT event dropped: {exc!r}')
 
     def on_event(self, xml):
-        marker = parse_marker(xml)
+        marker, reason = marker_or_reason(xml)
+        if reason:
+            self.get_logger().warn(f'marker dropped: {reason}')
         if marker and not marker['uid'].startswith('corridor-') and self.gate.admit(marker):
             text = f"send the nearest vehicle to marker {marker['callsign'] or marker['uid']} at {marker['lat']:.6f}, {marker['lon']:.6f}"
             self.request_pub.publish(String(data=text))
