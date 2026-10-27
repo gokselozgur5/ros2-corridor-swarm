@@ -151,6 +151,26 @@ def test_reader_ignores_a_marker_without_coordinates_and_goes_on(bridge):
     assert 'RALLY2' in bridge.requests.lines[0]
 
 
+# ----- a new connection registers with one event; the fleet follows on the next tick ------------------
+# FreeTAKServer 1.9.9.2 parses a connection's first message, up to its </event>, as the client's registration and
+# drops the client when more follows in that chunk: a three-vehicle batch on a fresh socket reconnected once a second.
+
+def test_a_new_connection_registers_with_one_event_and_the_fleet_follows_on_the_next_tick(bridge, monkeypatch):
+    now = bridge.now_s()
+    bridge.state = {v: {'lat': 52.7, 'lon': -3.0 + i * 1e-3, 't': now} for i, v in enumerate(['v1', 'v2', 'v3'])}
+    fake = FakeSock()
+    bridge.fakes.append(fake)
+    monkeypatch.setattr(bridge, 'connect', lambda: fake)
+    with bridge.lock:
+        bridge.sock = None
+    bridge.send_pli()
+    assert [s.count('<event') for s in fake.sent] == [1], fake.sent
+    assert 'uid="corridor-v1"' in fake.sent[0]
+    bridge.send_pli()
+    assert [s.count('<event') for s in fake.sent] == [1, 3], fake.sent
+    assert all(f'uid="corridor-{v}"' in fake.sent[1] for v in ('v1', 'v2', 'v3'))
+
+
 # ----- cot-2: a vehicle that stops reporting is not re-sent as a fresh PLI ---------------------------
 
 def test_silent_vehicle_gets_no_pli_after_fix_timeout(bridge):

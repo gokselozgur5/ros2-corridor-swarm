@@ -26,17 +26,22 @@ def pli_event(uid, callsign, lat, lon, hae=0.0, course_deg=0.0, speed_mps=0.0, c
     return ET.tostring(ev, encoding='unicode')
 
 
-def pli_payload(state, t=0.0, fix_timeout_s=float('inf'), team='Cyan', now=None):
+def pli_events(state, t=0.0, fix_timeout_s=float('inf'), team='Cyan', now=None):
     """One PLI per vehicle in state ({name: {lat, lon, hae, course, speed, t}}) whose fix is younger than
-    fix_timeout_s at time t, concatenated. A vehicle that stops reporting gets no further events, so its
-    last one goes stale on the TAK side instead of being re-sent as a fresh machine-GPS position."""
-    payload = ''
+    fix_timeout_s at time t, as a list of event strings. A vehicle that stops reporting gets no further events,
+    so its last one goes stale on the TAK side instead of being re-sent as a fresh machine-GPS position."""
+    events = []
     for v, st in state.items():
         if 'lat' not in st or t - st.get('t', t) > fix_timeout_s:
             continue
-        payload += pli_event(uid=f'corridor-{v}', callsign=v.upper(), lat=st['lat'], lon=st['lon'], hae=st.get('hae', 0.0),
-                             course_deg=st.get('course', 0.0), speed_mps=st.get('speed', 0.0), team=team, now=now)
-    return payload
+        events.append(pli_event(uid=f'corridor-{v}', callsign=v.upper(), lat=st['lat'], lon=st['lon'], hae=st.get('hae', 0.0),
+                                course_deg=st.get('course', 0.0), speed_mps=st.get('speed', 0.0), team=team, now=now))
+    return events
+
+
+def pli_payload(state, t=0.0, fix_timeout_s=float('inf'), team='Cyan', now=None):
+    """The events of pli_events concatenated: one write for an established TAK connection."""
+    return ''.join(pli_events(state, t, fix_timeout_s, team, now))
 
 
 def _coordinate(text, limit):
