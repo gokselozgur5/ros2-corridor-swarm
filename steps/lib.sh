@@ -2,8 +2,9 @@
 #   source ./env.sh; source ./steps/lib.sh
 # Thor is shared: other users run Gazebo, robot_state_publisher, parameter_bridge and foxglove_bridge
 # on the same host, so nothing here is killed by executable name. Everything a proof starts inherits
-# CORRIDOR_PROOF, and kill_ours stops the live descendants of this script plus any leftover process
-# that carries the marker (an earlier run that died without reaching its EXIT trap).
+# CORRIDOR_PROOF=<pid of the proof script>, and kill_ours stops the live descendants of this script plus
+# the leftovers of proofs whose script is gone (a run that died without reaching its EXIT trap). A proof
+# that is still running keeps its processes: two proofs may share the host on different domains.
 export CORRIDOR_PROOF="${CORRIDOR_PROOF:-$$}"
 
 _proof_descendants() {   # the given pids and everything below them
@@ -15,10 +16,12 @@ _proof_descendants() {   # the given pids and everything below them
   done
 }
 
-_proof_marked() {   # this user's processes whose environment carries CORRIDOR_PROOF
-  local pid
+_proof_marked() {   # this user's processes carrying our marker, or the marker of a proof script that no longer runs
+  local pid mark
   for pid in $(pgrep -u "$(id -u)"); do
-    grep -qz '^CORRIDOR_PROOF=' "/proc/$pid/environ" 2>/dev/null && echo "$pid"
+    mark=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n 's/^CORRIDOR_PROOF=//p' | head -1)
+    [ -z "$mark" ] && continue
+    if [ "$mark" = "$CORRIDOR_PROOF" ] || ! kill -0 "$mark" 2>/dev/null; then echo "$pid"; fi
   done
 }
 
