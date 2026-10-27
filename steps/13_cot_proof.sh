@@ -15,7 +15,8 @@ sleep 6
 ros2 run corridor_cot cot_bridge --ros-args -p "vehicles:=[v1,v2,v3]" -p host:=127.0.0.1 -p period_s:=1.0 > /tmp/cot16.log 2>&1 &
 sleep 8
 grep -m1 "connected to TAK server" /tmp/cot16.log || echo "bridge did not connect"
-before=$(sudo -n docker logs corridor-fts 2>&1 | wc -l)
+fts_logs() { if docker ps >/dev/null 2>&1; then docker logs corridor-fts 2>&1; else sudo -n docker logs corridor-fts 2>&1; fi; }
+before=$(fts_logs | wc -l)
 # Second client, like ATAK: register with its own PLI, then collect what the server relays for 15 s.
 python3 - <<'PY' 2>&1 | tee /tmp/relay16.txt
 import collections, datetime, re, socket, time
@@ -53,7 +54,7 @@ print('events relayed by the server to the second client in 15 s: ' + (' '.join(
 missing = [u for u in ('corridor-v1', 'corridor-v2', 'corridor-v3') if seen[u] < 3]
 print('RELAY PASS' if not missing else 'RELAY FAIL fewer than 3 events for ' + ' '.join(missing))
 PY
-sudo -n docker logs corridor-fts 2>&1 | tail -n +$before | grep -i -m3 "corridor-v\|atak-listener\|error" | cut -c1-160
+fts_logs | tail -n +$before | grep -i -m3 "corridor-v\|atak-listener\|error" | cut -c1-160
 connects=$(grep -c "connected to TAK server" /tmp/cot16.log 2>/dev/null || true); connects=${connects:-0}
 echo "bridge connections: $connects (more than 1 means the server dropped the session)"
 grep -q "^RELAY PASS" /tmp/relay16.txt && [ "$connects" -eq 1 ] && ! grep -q "TAK send failed" /tmp/cot16.log \
