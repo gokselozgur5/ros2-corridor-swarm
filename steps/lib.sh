@@ -19,9 +19,10 @@ _proof_descendants() {   # the given pids and everything below them
 _proof_marked() {   # this user's processes carrying our marker, or the marker of a proof script that no longer runs
   local pid mark
   for pid in $(pgrep -u "$(id -u)"); do
-    mark=$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | sed -n 's/^CORRIDOR_PROOF=//p' | head -1)
+    mark=$({ tr '\0' '\n' < "/proc/$pid/environ"; } 2>/dev/null | sed -n 's/^CORRIDOR_PROOF=//p' | head -1)
     [ -z "$mark" ] && continue
-    if [ "$mark" = "$CORRIDOR_PROOF" ] || ! kill -0 "$mark" 2>/dev/null; then echo "$pid"; fi
+    # /proc/<pid> rather than kill -0: kill -0 fails with EPERM on another user's pid and would call it dead
+    if [ "$mark" = "$CORRIDOR_PROOF" ] || [ ! -d "/proc/$mark" ]; then echo "$pid"; fi
   done
 }
 
