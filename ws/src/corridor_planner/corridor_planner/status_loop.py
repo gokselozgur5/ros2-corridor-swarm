@@ -33,8 +33,8 @@ class StatusLoop(Node):
         self.events = []
         for v in self.state:
             self.create_subscription(NavSatFix, f'/{v}/fix', lambda m, v=v: self.state[v].update(lat=round(m.latitude, 5), lon=round(m.longitude, 5)), 10)
+            # odom gives speed only: its position starts at the spawn and drifts, the fleet is positioned by fix (#19)
             self.create_subscription(Odometry, f'/{v}/odom', lambda m, v=v: self.state[v].update(
-                x=round(m.pose.pose.position.x, 1), y=round(m.pose.pose.position.y, 1),
                 speed=round(math.hypot(m.twist.twist.linear.x, m.twist.twist.linear.y), 2)), 10)
             self.create_subscription(String, f'/{v}/follower/status', lambda m, v=v: self.state[v].update(follower=m.data), 10)
         self.create_subscription(GeofenceEvent, '/fleet/geofence_events',

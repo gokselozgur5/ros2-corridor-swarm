@@ -1,9 +1,13 @@
 """CoT bridge (issue #16).
 
 Every vehicle's fix/odom -> one PLI event per `period_s` over TCP to the TAK server (FTS_HOST:8087,
-plain CoT, no TLS). Events from the server that are markers -> std_msgs/String on /mission/request
-("send the nearest vehicle to <callsign> at lat, lon"), so the planner can act on them. Reconnects on
-any socket error; never raises out of a callback."""
+plain CoT, no TLS); a vehicle whose fix is older than `fix_timeout_s` is left out, so its icon goes stale
+in ATAK. Events from the server that are markers -> std_msgs/String on /mission/request
+("send the nearest vehicle to <callsign> at lat, lon"), so the planner can act on them; one request per
+placement (a uid re-sent at the same spot is a rename or a refresh, not a new order), none for a marker
+already stale. Reconnects on any socket error; a (re)connection's first write is a single event, which
+FreeTAKServer takes as the client's registration, and the fleet follows on the next tick. Never raises
+out of a callback."""
 import os
 import socket
 import threading
@@ -11,10 +15,10 @@ import threading
 import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
-from sensor_msgs.msg import NavSatFix
+from sensor_msgs.msg import NavSatFix, NavSatStatus
 from std_msgs.msg import String
 
-from corridor_cot.cot import course_from_quaternion, parse_marker, pli_event
+from corridor_cot.cot import MarkerGate, course_from_quaternion, marker_or_reason, pli_events
 
 
 class CotBridge(Node):
@@ -24,10 +28,13 @@ class CotBridge(Node):
         self.declare_parameter('host', os.environ.get('FTS_HOST', '127.0.0.1'))
         self.declare_parameter('port', 8087)
         self.declare_parameter('period_s', 2.0)
+        self.declare_parameter('fix_timeout_s', 5.0)
+        self.declare_parameter('marker_move_m', 5.0)
         self.declare_parameter('team', 'Cyan')
+        self.gate = MarkerGate(self.get_parameter('marker_move_m').value)
         self.state = {v: {} for v in self.get_parameter('vehicles').value}
         for v in self.state:
-            self.create_subscription(NavSatFix, f'/{v}/fix', lambda m, v=v: self.state[v].update(lat=m.latitude, lon=m.longitude, hae=m.altitude), 10)
+            self.create_subscription(NavSatFix, f'/{v}/fix', lambda m, v=v: self.on_fix(v, m), 10)
             self.create_subscription(Odometry, f'/{v}/odom', lambda m, v=v: self.state[v].update(
                 course=course_from_quaternion(m.pose.pose.orientation.z, m.pose.pose.orientation.w),
                 speed=abs(m.twist.twist.linear.x)), 10)
@@ -44,21 +51,28 @@ class CotBridge(Node):
         self.get_logger().info(f'connected to TAK server {host}:{port}')
         return s
 
+    def now_s(self):
+        return self.get_clock().now().nanoseconds * 1e-9
+
+    def on_fix(self, v, m):
+        if m.status.status < NavSatStatus.STATUS_FIX:
+            return
+        self.state[v].update(lat=m.latitude, lon=m.longitude, hae=m.altitude, t=self.now_s())
+
     def send_pli(self):
-        payload = ''
-        for v, st in self.state.items():
-            if 'lat' not in st:
-                continue
-            payload += pli_event(uid=f'corridor-{v}', callsign=v.upper(), lat=st['lat'], lon=st['lon'],
-                                 hae=st.get('hae', 0.0), course_deg=st.get('course', 0.0), speed_mps=st.get('speed', 0.0),
-                                 team=self.get_parameter('team').value)
-        if not payload:
+        events = pli_events(self.state, t=self.now_s(), fix_timeout_s=self.get_parameter('fix_timeout_s').value,
+                            team=self.get_parameter('team').value)
+        if not events:
             return
         with self.lock:
             try:
                 if self.sock is None:
                     self.sock = self.connect()
-                self.sock.sendall(payload.encode())
+                    # FreeTAKServer reads a new connection's first message up to its </event> as the client's
+                    # registration and drops the client when more follows in the same chunk (1.9.9.2 closed the
+                    # socket on a three-vehicle batch, once a second). One event now; batches are fine afterwards.
+                    events = events[:1]
+                self.sock.sendall(''.join(events).encode())
             except OSError as exc:
                 self.get_logger().warn(f'TAK send failed: {exc}', throttle_duration_sec=10.0)
                 self.sock = None
@@ -86,11 +100,19 @@ class CotBridge(Node):
                 start = xml.rfind(b'<event')
                 if start < 0:
                     continue
-                marker = parse_marker(xml[start:].decode(errors='replace') + '</event>')
-                if marker and not marker['uid'].startswith('corridor-'):
-                    text = f"send the nearest vehicle to marker {marker['callsign'] or marker['uid']} at {marker['lat']:.6f}, {marker['lon']:.6f}"
-                    self.request_pub.publish(String(data=text))
-                    self.get_logger().info(f'marker -> request: {text}')
+                try:
+                    self.on_event(xml[start:].decode(errors='replace') + '</event>')
+                except Exception as exc:
+                    self.get_logger().warn(f'CoT event dropped: {exc!r}')
+
+    def on_event(self, xml):
+        marker, reason = marker_or_reason(xml)
+        if reason:
+            self.get_logger().warn(f'marker dropped: {reason}')
+        if marker and not marker['uid'].startswith('corridor-') and self.gate.admit(marker):
+            text = f"send the nearest vehicle to marker {marker['callsign'] or marker['uid']} at {marker['lat']:.6f}, {marker['lon']:.6f}"
+            self.request_pub.publish(String(data=text))
+            self.get_logger().info(f'marker -> request: {text}')
 
 
 def main():
