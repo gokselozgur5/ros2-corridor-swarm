@@ -3,9 +3,10 @@
 # PASS only when the patrol result is done and the reported distance is a plausible lap (> 380 m).
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
+source ./steps/lib.sh
 LOG=~/deletdis/log/12_gazebo_patrol.log; exec > >(tee -a "$LOG") 2>&1
 echo "=== $(date -Is) gazebo patrol"
-cleanup() { pkill -f "ros2 launch corridor" 2>/dev/null; pkill -f "corridor_nav/lib" 2>/dev/null; pkill -f "gz sim -s" 2>/dev/null; pkill -f parameter_bridge 2>/dev/null; pkill -f robot_state_publisher 2>/dev/null; pkill -f "ros2 topic echo" 2>/dev/null; pkill -f "action send_goal" 2>/dev/null; sleep 1; }
+cleanup() { kill_ours; sleep 1; }
 trap cleanup EXIT
 cleanup
 ros2 launch corridor_gz sim.launch.py use_ros2_control:=true > /tmp/sim_patrol.log 2>&1 &

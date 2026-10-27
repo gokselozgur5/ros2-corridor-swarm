@@ -4,9 +4,10 @@
 # server drops it, so the verdict needs the relayed events and exactly one connection.
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
+source ./steps/lib.sh
 LOG=~/deletdis/log/13_cot_proof.log; exec > >(tee -a "$LOG") 2>&1
 echo "=== $(date -Is) cot proof"
-cleanup() { pkill -f "ros2 launch corridor" 2>/dev/null; pkill -f "corridor_nav/lib" 2>/dev/null; pkill -f "corridor_sim/lib" 2>/dev/null; pkill -f "corridor_cot/lib" 2>/dev/null; sleep 1; }
+cleanup() { kill_ours; sleep 1; }
 cleanup
 ss -ltn | grep -q ":8087" || { echo "no TAK server on 8087"; echo "PROOF 16 FAIL"; exit 1; }
 ros2 launch corridor_nav kinematic.launch.py n:=3 > /tmp/kin16.log 2>&1 &
