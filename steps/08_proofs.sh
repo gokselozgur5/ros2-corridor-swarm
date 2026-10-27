@@ -3,11 +3,12 @@
 # Usage: ./steps/08_proofs.sh [3|4|5|7|8|9|10|12|all]
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
+source ./steps/lib.sh
 LOG=~/deletdis/log/08_proofs.log; exec > >(tee -a "$LOG") 2>&1
 which=${1:-all}
 echo "=== $(date -Is) proofs: $which"
 
-cleanup() { pkill -f "ros2 launch corridor" 2>/dev/null; pkill -f "corridor_nav/lib" 2>/dev/null; pkill -f "corridor_sim/lib" 2>/dev/null; pkill -f "corridor_gz" 2>/dev/null; pkill -f "gz sim -s" 2>/dev/null; pkill -f parameter_bridge 2>/dev/null; pkill -f robot_state_publisher 2>/dev/null; pkill -f "ros_gz_sim/create|ros_gz_sim create" 2>/dev/null; pkill -f "ros2 topic echo" 2>/dev/null; rm -f /tmp/status7.txt /tmp/status8.txt /tmp/xte7.txt /tmp/gf8.txt; sleep 1; }
+cleanup() { kill_ours; rm -f /tmp/status7.txt /tmp/status8.txt /tmp/xte7.txt /tmp/gf8.txt; sleep 1; }
 
 if [[ $which == 3 || $which == all ]]; then
   echo "--- #3 xacro -> URDF -> check_urdf"
@@ -75,7 +76,7 @@ if [[ $which == 10 || $which == all ]]; then
     echo "$v: odom ${r:-none} Hz, speed ${sp:-none} m/s"; [[ -z $r || -z $sp ]] && pass=no; awk -v s="$sp" 'BEGIN{exit !(s>1.0)}' || pass=no
   done
   [[ $pass == yes ]] && echo "PROOF 10 PASS" || echo "PROOF 10 FAIL"
-  pkill -f "action send_goal" 2>/dev/null; cleanup
+  cleanup
 fi
 
 if [[ $which == 12 || $which == all ]]; then
@@ -94,7 +95,7 @@ if [[ $which == 12 || $which == all ]]; then
   grep -o '"accepted": true[^}]*' /tmp/trace12.txt | head -2
   grep -o '"mode": "[a-z]*"' /tmp/trace12.txt | tail -1
   grep -q '"accepted": true' /tmp/trace12.txt && grep -q '"mode": "patrol"' /tmp/trace12.txt && echo "PROOF 12 PASS (debug path; the model path needs ANTHROPIC_API_KEY)" || { echo "PROOF 12 FAIL"; tail -5 /tmp/mission12.log; }
-  pkill -f "mission.launch" 2>/dev/null; pkill -f "corridor_planner/lib" 2>/dev/null; cleanup
+  cleanup
 fi
 
 if [[ $which == 5 || $which == all ]]; then

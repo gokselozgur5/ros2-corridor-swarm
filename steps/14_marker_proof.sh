@@ -2,9 +2,10 @@
 # Issue #16, reverse direction: a marker sent to the TAK server by a second client reaches /mission/request through cot_bridge.
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
+source ./steps/lib.sh
 LOG=~/deletdis/log/14_marker_proof.log; exec > >(tee -a "$LOG") 2>&1
 echo "=== $(date -Is) marker proof"
-cleanup() { pkill -f "ros2 launch corridor" 2>/dev/null; pkill -f "corridor_nav/lib" 2>/dev/null; pkill -f "corridor_sim/lib" 2>/dev/null; pkill -f "corridor_cot/lib" 2>/dev/null; pkill -f "ros2 topic echo" 2>/dev/null; sleep 1; }
+cleanup() { kill_ours; sleep 1; }
 cleanup
 ros2 launch corridor_nav kinematic.launch.py > /tmp/kin16b.log 2>&1 &
 sleep 6
@@ -22,7 +23,7 @@ xml = (f'<event version="2.0" uid="atak-marker-1" type="b-m-p-w" how="h-g-i-g-o"
 s = socket.create_connection(('127.0.0.1', 8087), timeout=5)
 s.sendall(xml.encode()); s.sendall(xml.encode())
 import time; time.sleep(3); s.close()
-print('marker sent twice')
+print('marker sent twice: the bridge forwards the placement once, the repeat at the same spot is dropped (marker_move_m)')
 PY
 for i in $(seq 1 20); do grep -q "RALLY1" /tmp/req16.txt 2>/dev/null && break; sleep 1; done
 grep -m1 "RALLY1" /tmp/req16.txt || { echo "no request seen"; grep -i "marker\|warn\|error" /tmp/cot16b.log | tail -3; }

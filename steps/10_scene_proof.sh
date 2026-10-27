@@ -2,9 +2,10 @@
 # Issue #13, debug path: Gazebo camera frame -> describe_scene tool -> image block (no model call).
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
+source ./steps/lib.sh
 LOG=~/deletdis/log/10_scene_proof.log; exec > >(tee -a "$LOG") 2>&1
 echo "=== $(date -Is) scene proof"
-cleanup() { pkill -f "ros2 launch corridor" 2>/dev/null; pkill -f "corridor_planner/lib" 2>/dev/null; pkill -f "gz sim -s" 2>/dev/null; pkill -f parameter_bridge 2>/dev/null; pkill -f robot_state_publisher 2>/dev/null; pkill -f "ros2 topic echo" 2>/dev/null; sleep 1; }
+cleanup() { kill_ours; sleep 1; }
 cleanup
 ros2 launch corridor_gz sim.launch.py > /tmp/sim13.log 2>&1 &
 sleep 15

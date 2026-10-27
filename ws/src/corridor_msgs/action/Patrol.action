@@ -7,7 +7,7 @@ bool clockwise
 ---
 uint32 laps_done
 float64 distance_m
-string result         # done | cancelled | geofence | error
+string result         # done | cancelled | geofence | preempted (replaced by a newer goal, or another node took the follower) | error
 ---
 uint32 lap
 float32 lap_progress  # 0..1

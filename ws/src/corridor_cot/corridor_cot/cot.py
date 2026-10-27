@@ -1,6 +1,7 @@
 """Cursor-on-Target XML, built and parsed without pytak so it is unit-testable and dependency-free."""
 import math
 import xml.etree.ElementTree as ET
+from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 
 ISO = '%Y-%m-%dT%H:%M:%S.%fZ'
@@ -25,23 +26,113 @@ def pli_event(uid, callsign, lat, lon, hae=0.0, course_deg=0.0, speed_mps=0.0, c
     return ET.tostring(ev, encoding='unicode')
 
 
-def parse_marker(xml_text):
-    """A TAK marker (type a-*-G or b-m-p-*) -> dict(uid, callsign, lat, lon, type) or None for other events."""
+def pli_events(state, t=0.0, fix_timeout_s=float('inf'), team='Cyan', now=None):
+    """One PLI per vehicle in state ({name: {lat, lon, hae, course, speed, t}}) whose fix is younger than
+    fix_timeout_s at time t, as a list of event strings. A vehicle that stops reporting gets no further events,
+    so its last one goes stale on the TAK side instead of being re-sent as a fresh machine-GPS position."""
+    events = []
+    for v, st in state.items():
+        if 'lat' not in st or t - st.get('t', t) > fix_timeout_s:
+            continue
+        events.append(pli_event(uid=f'corridor-{v}', callsign=v.upper(), lat=st['lat'], lon=st['lon'], hae=st.get('hae', 0.0),
+                                course_deg=st.get('course', 0.0), speed_mps=st.get('speed', 0.0), team=team, now=now))
+    return events
+
+
+def pli_payload(state, t=0.0, fix_timeout_s=float('inf'), team='Cyan', now=None):
+    """The events of pli_events concatenated: one write for an established TAK connection."""
+    return ''.join(pli_events(state, t, fix_timeout_s, team, now))
+
+
+def _coordinate(text, limit):
+    """Attribute text -> float within [-limit, limit], or None when missing, non-numeric, nan or inf."""
+    try:
+        x = float(text)
+    except (TypeError, ValueError):
+        return None
+    return x if math.isfinite(x) and abs(x) <= limit else None
+
+
+def _parse_stamp(text):
+    """CoT timestamp -> aware datetime, or None when missing or in a form we do not read."""
+    for fmt in (ISO, '%Y-%m-%dT%H:%M:%SZ'):
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def marker_or_reason(xml_text, now=None):
+    """(marker, None) for a usable TAK marker, (None, reason) for a marker that is dropped, (None, None)
+    for any other event. The reason is for the bridge's log: the 8087 stream is unauthenticated and a
+    silently vanishing marker is indistinguishable from a dead bridge."""
     try:
         ev = ET.fromstring(xml_text)
     except ET.ParseError:
-        return None
+        return None, None
     if ev.tag != 'event':
-        return None
+        return None, None
     cot_type = ev.get('type', '')
     if not (cot_type.startswith('b-m-p') or cot_type.startswith('a-u-G') or cot_type.startswith('a-h-G')):
-        return None
+        return None, None
+    uid = ev.get('uid', '')
+    now = now or datetime.now(timezone.utc)
+    stale = _parse_stamp(ev.get('stale'))
+    if stale is not None and stale < now:
+        return None, f'marker {uid!r} stale since {ev.get("stale")} ({(now - stale).total_seconds():.0f} s ago)'
     pt = ev.find('point')
     if pt is None:
-        return None
+        return None, f'marker {uid!r} has no point'
+    lat, lon = _coordinate(pt.get('lat'), 90.0), _coordinate(pt.get('lon'), 180.0)
+    if lat is None or lon is None:
+        return None, f'marker {uid!r} has no usable lat/lon: lat={pt.get("lat")!r} lon={pt.get("lon")!r}'
     contact = ev.find('detail/contact')
-    return {'uid': ev.get('uid', ''), 'callsign': contact.get('callsign', '') if contact is not None else '',
-            'lat': float(pt.get('lat')), 'lon': float(pt.get('lon')), 'type': cot_type}
+    return {'uid': uid, 'callsign': contact.get('callsign', '') if contact is not None else '',
+            'lat': lat, 'lon': lon, 'type': cot_type}, None
+
+
+def parse_marker(xml_text, now=None):
+    """A TAK marker (type a-*-G or b-m-p-*) -> dict(uid, callsign, lat, lon, type) or None for other events.
+
+    None also for a marker whose <point> has no usable lat/lon (the 8087 stream is unauthenticated and the
+    reader thread must not die on one bad event) and for one whose stale time has passed at `now` (a replayed
+    or expired placement must not dispatch a vehicle); an unreadable stale is taken as no expiry.
+    marker_or_reason says why a marker was dropped."""
+    return marker_or_reason(xml_text, now)[0]
+
+
+def _metres(a, b):
+    """Flat-earth distance between two (lat, lon) pairs; good to a few percent over the tens of metres it is used for."""
+    k = 111320.0
+    return math.hypot((b[0] - a[0]) * k, (b[1] - a[1]) * k * math.cos(math.radians((a[0] + b[0]) / 2.0)))
+
+
+class MarkerGate:
+    """Decides which marker events become mission requests: a uid passes the first time and again only once it
+    has moved by `move_m`. ATAK re-sends the same uid on a rename after the auto callsign, on a refresh and
+    through a second client; each of those cost a planning run or was dropped by the planner's busy guard.
+    Remembers at most `capacity` uids (the stream is unauthenticated: unique uids must not grow memory without
+    bound); a marker without a uid has nothing to deduplicate on and always passes."""
+
+    def __init__(self, move_m=5.0, capacity=256):
+        self.move_m = move_m
+        self.capacity = capacity
+        self.sent = OrderedDict()
+
+    def admit(self, marker):
+        uid = marker['uid']
+        if not uid:
+            return True
+        here = (marker['lat'], marker['lon'])
+        last = self.sent.get(uid)
+        if last is not None and _metres(last, here) < self.move_m:
+            return False
+        self.sent[uid] = here
+        self.sent.move_to_end(uid)
+        while len(self.sent) > self.capacity:
+            self.sent.popitem(last=False)
+        return True
 
 
 def course_from_quaternion(z, w):

@@ -2,10 +2,11 @@
 # Issues #12 #13 #14, model path. Needs ANTHROPIC_API_KEY in ./.env (env.sh sources it). Costs a few cents.
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
+source ./steps/lib.sh
 [ -n "$ANTHROPIC_API_KEY" ] || { echo "ANTHROPIC_API_KEY is not set; put it in .env"; exit 1; }
 LOG=~/deletdis/log/11_live_model_proof.log; exec > >(tee -a "$LOG") 2>&1
 echo "=== $(date -Is) live model proof"
-cleanup() { pkill -f "ros2 launch corridor" 2>/dev/null; pkill -f "corridor_planner/lib" 2>/dev/null; pkill -f "corridor_nav/lib" 2>/dev/null; pkill -f "gz sim -s" 2>/dev/null; pkill -f parameter_bridge 2>/dev/null; pkill -f robot_state_publisher 2>/dev/null; pkill -f "ros2 topic echo" 2>/dev/null; sleep 1; }
+cleanup() { kill_ours; sleep 1; }
 cleanup
 # Gazebo backend so describe_scene has a real camera; follower + patrol server on top of it.
 ros2 launch corridor_gz sim.launch.py use_ros2_control:=true > /tmp/sim_live.log 2>&1 &
