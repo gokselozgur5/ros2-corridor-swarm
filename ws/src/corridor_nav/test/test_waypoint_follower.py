@@ -3,8 +3,11 @@ the stub clock is advanced by hand. The same scenarios run against real rclpy in
 import pytest
 import rclpy
 
-if hasattr(rclpy, '__file__'):
-    pytest.skip('stub-rclpy tests: test_waypoint_follower_node.py covers the real stack', allow_module_level=True)
+# On the real stack these scenarios run in test_waypoint_follower_node.py. A module-level pytest.skip would do,
+# but launch_testing's collection hook imports every module first and a Skipped raised there skips the
+# whole test directory, node tests included; a marker leaves the other modules alone.
+pytestmark = pytest.mark.skipif(hasattr(rclpy, '__file__'),
+                                reason='stub-rclpy tests: test_waypoint_follower_node.py covers the real stack')
 
 from geometry_msgs.msg import PoseStamped, Quaternion
 from nav_msgs.msg import Path
