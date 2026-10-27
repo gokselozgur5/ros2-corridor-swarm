@@ -5,7 +5,9 @@ plain CoT, no TLS); a vehicle whose fix is older than `fix_timeout_s` is left ou
 in ATAK. Events from the server that are markers -> std_msgs/String on /mission/request
 ("send the nearest vehicle to <callsign> at lat, lon"), so the planner can act on them; one request per
 placement (a uid re-sent at the same spot is a rename or a refresh, not a new order), none for a marker
-already stale. Reconnects on any socket error; never raises out of a callback."""
+already stale. Reconnects on any socket error; a (re)connection's first write is a single event, which
+FreeTAKServer takes as the client's registration, and the fleet follows on the next tick. Never raises
+out of a callback."""
 import os
 import socket
 import threading
@@ -16,7 +18,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from std_msgs.msg import String
 
-from corridor_cot.cot import MarkerGate, course_from_quaternion, marker_or_reason, pli_payload
+from corridor_cot.cot import MarkerGate, course_from_quaternion, marker_or_reason, pli_events
 
 
 class CotBridge(Node):
@@ -58,15 +60,19 @@ class CotBridge(Node):
         self.state[v].update(lat=m.latitude, lon=m.longitude, hae=m.altitude, t=self.now_s())
 
     def send_pli(self):
-        payload = pli_payload(self.state, t=self.now_s(), fix_timeout_s=self.get_parameter('fix_timeout_s').value,
-                              team=self.get_parameter('team').value)
-        if not payload:
+        events = pli_events(self.state, t=self.now_s(), fix_timeout_s=self.get_parameter('fix_timeout_s').value,
+                            team=self.get_parameter('team').value)
+        if not events:
             return
         with self.lock:
             try:
                 if self.sock is None:
                     self.sock = self.connect()
-                self.sock.sendall(payload.encode())
+                    # FreeTAKServer reads a new connection's first message up to its </event> as the client's
+                    # registration and drops the client when more follows in the same chunk (1.9.9.2 closed the
+                    # socket on a three-vehicle batch, once a second). One event now; batches are fine afterwards.
+                    events = events[:1]
+                self.sock.sendall(''.join(events).encode())
             except OSError as exc:
                 self.get_logger().warn(f'TAK send failed: {exc}', throttle_duration_sec=10.0)
                 self.sock = None

@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-from corridor_cot.cot import MarkerGate, course_from_quaternion, parse_marker, pli_event, pli_payload
+from corridor_cot.cot import MarkerGate, course_from_quaternion, parse_marker, pli_event, pli_events, pli_payload
 
 
 def test_pli_event_shape():
@@ -24,6 +24,14 @@ def test_pli_payload_one_event_per_vehicle_with_a_fix():
     assert events[0].find('detail/__group').get('name') == 'Red'
     assert events[0].find('detail/track').get('course') == '45.0'
     assert pli_payload({'v1': {}}) == ''
+
+
+def test_pli_events_is_one_string_per_live_vehicle_and_the_payload_their_concatenation():
+    now = datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)
+    state = {'v1': {'lat': 52.7, 'lon': -3.0, 't': 100.0}, 'v2': {'lat': 52.71, 'lon': -3.01, 't': 100.0}, 'v3': {}}
+    events = pli_events(state, t=101.0, fix_timeout_s=5.0, team='Red', now=now)
+    assert [ET.fromstring(e).get('uid') for e in events] == ['corridor-v1', 'corridor-v2']
+    assert ''.join(events) == pli_payload(state, t=101.0, fix_timeout_s=5.0, team='Red', now=now)
 
 
 def test_pli_payload_drops_a_vehicle_whose_fix_went_silent():
