@@ -130,14 +130,14 @@ def deliver_fix(node, status, lat=52.7, lon=-3.0, timeout_s=5.0):
 # ----- cot-1: the reader thread survives a bad event and logs it ----------------------------------
 
 def test_reader_survives_an_event_that_raises_and_logs_it(bridge, monkeypatch):
-    real = cot_bridge.parse_marker
+    real = cot_bridge.marker_or_reason
 
     def exploding(xml):
         if 'boom' in xml:
             raise RuntimeError('boom')
         return real(xml)
 
-    monkeypatch.setattr(cot_bridge, 'parse_marker', exploding)
+    monkeypatch.setattr(cot_bridge, 'marker_or_reason', exploding)
     feed(bridge, [marker_xml('boom', 52.701, -2.9985, 'BAD'), marker_xml('atak-1', 52.701, -2.9985, 'RALLY1')])
     assert wait_for(lambda: len(bridge.requests.lines) == 1), bridge.log.lines
     assert 'RALLY1' in bridge.requests.lines[0]
