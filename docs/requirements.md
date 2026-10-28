@@ -273,3 +273,84 @@ Verified by: `test/test_planner.py::test_max_tokens_with_tool_use_blocks_keeps_n
 
 Sources: `ws/src/corridor_planner/corridor_planner/planner.py`, `mission_planner.py`, `status_loop.py`, `camera.py`, `tools.py`; `ws/src/corridor_planner/launch/mission.launch.py`; `ws/src/corridor_planner/test/test_planner.py`, `test_mission_tools.py`, `test_mission_planner_node.py`; `steps/08_proofs.sh`, `steps/10_scene_proof.sh`, `steps/11_live_model_proof.sh`; ARCHITECTURE.md:49-67,100-101; PLAN.md:9-11,48-57; README.md (grep `cost|usd`: no match); git HEAD 60633c8.
 
+## atak
+
+Scope: `corridor_cot` (`cot.py`, `cot_bridge.py`), FreeTAKServer container, marker to `/mission/request`, `MarkerGate`. PLAN Phase 4 (#15, #16). Repo root: /Volumes/GOKSSD/claude/ros2-corridor-swarm. Nothing was committed (task is read-only); the "atomic commits" instruction does not apply to this step.
+
+Notes on sources of truth vs code:
+- ARCHITECTURE.md:47 and PLAN.md:65 say `cot_bridge` reads `/fleet/state`. The code subscribes `/{v}/fix` (NavSatFix) and `/{v}/odom` (Odometry) per vehicle (cot_bridge.py:37-40). Requirements below follow the code.
+- No launch file starts `cot_bridge` (grep over ws/src/*/launch: no hit). It is run by hand / by steps/13 and steps/14 via `ros2 run corridor_cot cot_bridge` (steps/13_cot_proof.sh:15, steps/14_marker_proof.sh:12).
+- No script in the repo creates the FreeTAKServer container; steps/13_cot_proof.sh:18 only reads logs of a container named `corridor-fts`.
+- `MarkerGate` is a class inside `cot.py` (cot.py:111), not a node.
+
+REQ-ATAK-01 (Ubiquitous) The cot_bridge node shall declare parameters `vehicles` (default `['v1']`), `host` (default `$FTS_HOST` or `127.0.0.1`), `port` (8087), `period_s` (2.0), `fix_timeout_s` (5.0), `marker_move_m` (5.0) and `team` (`Cyan`).
+Verified by: NOT VERIFIED (defaults in cot_bridge.py:27-33; README.md:47 documents them; no test asserts the defaults).
+
+REQ-ATAK-02 (Event-driven) When a NavSatFix on `/<vehicle>/fix` arrives with `status.status >= STATUS_FIX`, the cot_bridge shall store lat, lon, hae and the ROS clock time of receipt for that vehicle.
+Verified by: test_cot_bridge_node.py::test_fix_without_a_fix_status_is_ignored and ::test_silent_vehicle_gets_no_pli_after_fix_timeout (positive branch via deliver_fix) (cot_bridge.py:54-60).
+
+REQ-ATAK-03 (Unwanted behaviour) If a NavSatFix arrives with `status.status < STATUS_FIX`, then the cot_bridge shall ignore it and send no PLI for that vehicle.
+Verified by: test_cot_bridge_node.py::test_fix_without_a_fix_status_is_ignored (cot_bridge.py:58-59).
+
+REQ-ATAK-04 (Event-driven) When an Odometry on `/<vehicle>/odom` arrives, the cot_bridge shall derive compass course (0 = north, clockwise) from the quaternion z,w and speed as `abs(twist.linear.x)`.
+Verified by: test_cot.py::test_course_from_quaternion (cot.py:138-141); odom wiring in cot_bridge.py:38-40 NOT VERIFIED.
+
+REQ-ATAK-05 (Ubiquitous) The cot_bridge shall, every `period_s`, build one CoT PLI event per vehicle with a fix: `uid=corridor-<vehicle>`, `callsign=<VEHICLE>`, `type=a-f-G-E-V-C`, `how=m-g`, stale = now + 60 s, lat/lon to 7 decimals, `<__group name=<team>>`, `<track course speed>`, `<takv device=corridor_sim>`.
+Verified by: test_cot.py::test_pli_event_shape, ::test_pli_payload_one_event_per_vehicle_with_a_fix, ::test_pli_events_is_one_string_per_live_vehicle_and_the_payload_their_concatenation (cot.py:14-39; timer cot_bridge.py:44).
+
+REQ-ATAK-06 (Unwanted behaviour) If a vehicle's last fix is older than `fix_timeout_s`, then the cot_bridge shall omit that vehicle from the PLI batch so its icon goes stale in ATAK instead of being re-sent as a live position.
+Verified by: test_cot.py::test_pli_payload_drops_a_vehicle_whose_fix_went_silent; test_cot_bridge_node.py::test_silent_vehicle_gets_no_pli_after_fix_timeout (cot.py:35; commit 33f5207).
+
+REQ-ATAK-07 (Ubiquitous) The cot_bridge shall send PLI events over plain TCP (no TLS) to `host:port`.
+Verified by: steps/13_cot_proof.sh:17 (live server, `connected to TAK server` log) (cot_bridge.py:47-52, 75).
+
+REQ-ATAK-07b (State-driven) While no vehicle has a live fix, the cot_bridge shall send nothing (and open no connection).
+Verified by: test_cot_bridge_node.py::test_fix_without_a_fix_status_is_ignored (`sock.sent == []`; the no-connect part NOT VERIFIED) (cot_bridge.py:65-66).
+
+REQ-ATAK-08 (Event-driven) When a TCP connection to the TAK server is (re)established, the cot_bridge shall write exactly one event as its first write (FreeTAKServer registration) and send the full fleet batch from the next tick on.
+Verified by: test_cot_bridge_node.py::test_a_new_connection_registers_with_one_event_and_the_fleet_follows_on_the_next_tick; steps/13_cot_proof.sh:58-60 (`bridge connections == 1`) (cot_bridge.py:69-75; commit 1c99eb8).
+
+REQ-ATAK-09 (Unwanted behaviour) If a socket write fails with OSError, then the cot_bridge shall log a throttled warning (10 s), drop the socket and reconnect on the next tick, never raising out of the timer callback.
+Verified by: NOT VERIFIED (cot_bridge.py:76-78; steps/13_cot_proof.sh:60 only asserts the absence of `TAK send failed`).
+
+REQ-ATAK-10 (Unwanted behaviour) If the reader receives an empty chunk or an OSError, then the cot_bridge shall drop the socket, clear its buffer and wait for the sender to reconnect.
+Verified by: NOT VERIFIED (cot_bridge.py:85-96).
+
+REQ-ATAK-11 (Ubiquitous) The cot_bridge reader shall split the inbound stream on `</event>`, hand each event to `on_event`, and on any exception log `CoT event dropped` and continue with the next event.
+Verified by: test_cot_bridge_node.py::test_reader_survives_an_event_that_raises_and_logs_it (cot_bridge.py:97-106; commit 9846f0b).
+
+REQ-ATAK-12 (Event-driven) When an inbound CoT event has type prefix `b-m-p`, `a-u-G` or `a-h-G`, the cot_bridge shall treat it as a marker and extract uid, callsign, lat, lon, type; any other event type, non-XML, or non-`event` root shall be ignored silently.
+Verified by: test_cot.py::test_parse_marker_accepts_waypoint_and_rejects_pli, ::test_marker_or_reason_names_why_a_marker_is_dropped (cot.py:70-78, 90-92; non-`event` root branch cot.py:74-75 has no test).
+
+REQ-ATAK-13 (Unwanted behaviour) If a marker's `<point>` is missing, or lat/lon is missing, non-numeric, NaN, infinite or out of [-90,90]/[-180,180], then the cot_bridge shall drop it and log `marker dropped: <reason>`.
+Verified by: test_cot.py::test_parse_marker_returns_none_for_unusable_coordinates, ::test_marker_or_reason_names_why_a_marker_is_dropped; test_cot_bridge_node.py::test_reader_ignores_a_marker_without_coordinates_and_goes_on (node level, no request published) (cot.py:47-53, 84-89; cot_bridge.py:110-111; commits b53ac85, adecbc0).
+
+REQ-ATAK-14 (Unwanted behaviour) If a marker's `stale` timestamp has already passed, then the cot_bridge shall drop it with a logged reason; an unreadable `stale` shall be taken as no expiry.
+Verified by: test_cot.py::test_parse_marker_drops_a_marker_whose_stale_time_has_passed; test_cot_bridge_node.py::test_stale_marker_is_not_a_request (cot.py:56-63, 81-83; commit 8e0a6c8).
+
+REQ-ATAK-15 (Unwanted behaviour) If an inbound marker's uid starts with `corridor-` (the fleet's own PLI relayed back), then the cot_bridge shall not publish a request for it.
+Verified by: NOT VERIFIED (cot_bridge.py:112; own PLI type `a-f-G-E-V-C` is already rejected by REQ-12's type filter, so this guard has no test of its own).
+
+REQ-ATAK-16 (Ubiquitous) The MarkerGate shall admit a uid the first time and again only when its position moved at least `move_m` metres (flat-earth distance) from the last admitted position; a re-send at the same spot, a rename, or jitter under `move_m` shall be rejected.
+Verified by: test_cot.py::test_marker_gate_passes_a_placement_once_and_again_only_when_moved; test_cot_bridge_node.py::test_same_marker_twice_is_one_request_and_a_move_is_another; steps/14_marker_proof.sh:24 (marker sent twice) (cot.py:105-108, 111-135; commit 883fde6).
+
+REQ-ATAK-17 (Ubiquitous) The MarkerGate shall remember at most `capacity` (256) uids, forgetting the oldest first, and shall always admit a marker with an empty uid.
+Verified by: test_cot.py::test_marker_gate_forgets_the_oldest_uid_beyond_its_capacity_and_never_blocks_a_uidless_marker (cot.py:118-135; commit c81a5b4).
+
+REQ-ATAK-18 (Event-driven) When a marker passes parsing, the `corridor-` filter and the MarkerGate, the cot_bridge shall publish std_msgs/String on `/mission/request` with data `send the nearest vehicle to marker <callsign or uid> at <lat:.6f>, <lon:.6f>` and log `marker -> request`.
+Verified by: test_cot_bridge_node.py::test_same_marker_twice_is_one_request_and_a_move_is_another (coordinate text), steps/14_marker_proof.sh:28-30 (end-to-end through FreeTAKServer, `RALLY1` on `/mission/request`) (cot_bridge.py:41, 112-115).
+
+REQ-ATAK-19 (Ubiquitous) [PLANNED] [GAP] The FreeTAKServer shall run in Docker on Thor as a named container (`corridor-fts`) owned by this project, never touching other containers, and an ATAK client in the emulator shall connect to it.
+Verified by: NOT VERIFIED (PLAN.md:63-64 #15 open per README.md:32; steps/13_cot_proof.sh:12,18 only checks a listener on 8087 and reads `corridor-fts` logs; no container setup script in the repo).
+
+REQ-ATAK-20 (Ubiquitous) [PLANNED] [GAP] Three vehicles shall be visible and moving in ATAK, and dropping a marker in ATAK shall send a vehicle there.
+Verified by: NOT VERIFIED (PLAN.md:65-66 #16 proof; steps/13 proves server-side relay to a second CoT client (steps/13_cot_proof.sh:53-55, 61), steps/14 proves marker to `/mission/request`; the ATAK display and the planner acting on the request are not exercised by any script in this area).
+
+Sources:
+- ws/src/corridor_cot/corridor_cot/cot_bridge.py (1-127)
+- ws/src/corridor_cot/corridor_cot/cot.py (1-141)
+- ws/src/corridor_cot/test/test_cot.py; ws/src/corridor_cot/test/test_cot_bridge_node.py
+- steps/13_cot_proof.sh; steps/14_marker_proof.sh
+- ARCHITECTURE.md:10-14, 47; PLAN.md:61-66; README.md:32, 47; .env.example:5
+- git log: 33f5207, 1c99eb8, 9846f0b, b53ac85, adecbc0, 8e0a6c8, 883fde6, c81a5b4, 980bd92, edcd6fb, cf203a4, eca1a62
+
