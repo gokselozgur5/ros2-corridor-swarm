@@ -31,6 +31,8 @@ def launch_setup(context):
         ]
     nodes.append(Node(package='corridor_nav', executable='geofence_monitor', name='geofence_monitor',
                       parameters=[{'corridor_geojson': corridor, 'vehicles': names, 'warn_margin_m': 15.0}]))
+    nodes.append(Node(package='corridor_nav', executable='fleet_state', name='fleet_state',
+                      parameters=[{'corridor_geojson': corridor, 'vehicles': names}]))
     return nodes
 
 
