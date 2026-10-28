@@ -19,7 +19,7 @@ repositories:
 REPOS
 grep -qxF 'ws/src/foxglove_bridge/' .gitignore || printf 'ws/src/foxglove_bridge/\nws/src/rosx_introspection/\n' >> .gitignore
 git rm -r -q --cached ws/src/foxglove_bridge ws/src/rosx_introspection 2>/dev/null || true
-git add -A && git commit -q -m "chore: cloned sources via ws/deps.repos (vcs import ws/src < ws/deps.repos), not embedded repos" && git log --oneline -1
+git add .gitignore ws/deps.repos && git commit -q -m "chore: cloned sources via ws/deps.repos (vcs import ws/src < ws/deps.repos), not embedded repos" && git log --oneline -1
 # Launch in its own tmux window so it keeps running after this script ends.
 tmux kill-window -t ros2:run 2>/dev/null || true
 tmux new-window -d -t ros2 -n run -c ~/deletdis/ros2-corridor-swarm

@@ -20,4 +20,4 @@ printf 'ws/build/\nws/install/\nws/log/\n__pycache__/\n' > .gitignore
 . ./env.sh
 echo "ROS_DISTRO=$ROS_DISTRO ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
 ros2 pkg list | wc -l | xargs echo "packages visible:"
-git add -A && git commit -q -m "chore: workspace skeleton and env.sh" && git log --oneline -1
+git add .gitignore env.sh && git commit -q -m "chore: workspace skeleton and env.sh" && git log --oneline -1
