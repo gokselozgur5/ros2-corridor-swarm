@@ -354,3 +354,73 @@ Sources:
 - ARCHITECTURE.md:10-14, 47; PLAN.md:61-66; README.md:32, 47; .env.example:5
 - git log: 33f5207, 1c99eb8, 9846f0b, b53ac85, adecbc0, 8e0a6c8, 883fde6, c81a5b4, 980bd92, edcd6fb, cf203a4, eca1a62
 
+## operator-ops
+
+Scope: Foxglove bridge and layout, launch arguments, `.env`/`env.sh` secrets, `steps/` proof scripts, tmux/logs. Read from the launch files, `env.sh`, `steps/lib.sh`, the proof scripts, `foxglove/corridor.json`, `cot_bridge.py`, `mission_planner.py`, `map_overlay.py` and the docs. Note: the repo was read only; nothing was edited or committed (the "atomic commits" reminder has nothing to apply to in this task).
+
+REQ-OPERATOROPS-01 (Ubiquitous). The `kinematic.launch.py`, `sim.launch.py` and `day1.launch.py` launch files shall start `foxglove_bridge` with `port: 8765`, `address: 0.0.0.0` and `send_buffer_limit: 100000000` (`kinematic.launch.py` lines 46-48, `sim.launch.py` lines 31-33, `day1.launch.py` lines 7-11).
+Verified by: `steps/04_run.sh` line 31 (`ss -ltnp | grep 8765`, day1 only); kinematic/sim bridge start NOT VERIFIED by any script or test.
+
+REQ-OPERATOROPS-02 (Optional). Where the `foxglove` launch argument is `false` on `kinematic.launch.py` or `sim.launch.py`, the launch shall not start `foxglove_bridge` (`IfCondition(LaunchConfiguration('foxglove'))`, `kinematic.launch.py` lines 45-48, `sim.launch.py` lines 30-33).
+Verified by: NOT VERIFIED.
+
+REQ-OPERATOROPS-03 (Ubiquitous). `sim.launch.py` shall start `foxglove_bridge`, `robot_state_publisher` and `parameter_bridge` (and, under `use_ros2_control`, `twist_stamper`) with `use_sim_time: True` (`sim.launch.py` lines 33, 36, 41, 49), per ARCHITECTURE.md line 41 "Sim time everywhere".
+Verified by: `steps/08_proofs.sh` block #4 (topic hz under sim time, lines 117-130) covers the bridge yaml path only; the foxglove_bridge `use_sim_time` parameter is NOT VERIFIED.
+
+REQ-OPERATOROPS-04 (Ubiquitous). `kinematic.launch.py` shall declare launch arguments `corridor` (default `corridor_nav/config/corridor_demo.geojson`), `n` (1), `first` (1), `lookahead_m` (3.0), `speed_mps` (3.0), `foxglove` (true), and shall start `unicycle_sim`, `waypoint_follower`, `patrol_server` under namespaces `v{first}..v{first+n-1}` plus one `geofence_monitor` with `vehicles` set to those names (`kinematic.launch.py` lines 13-49; README.md line 42).
+Verified by: `steps/08_proofs.sh` block #10 (`n:=3`, lines 65-80) and `steps/13_cot_proof.sh` line 13 for `n`; `first`, `lookahead_m`, `speed_mps` NOT VERIFIED.
+
+REQ-OPERATOROPS-05 (Ubiquitous). `sim.launch.py` shall declare `world` (default `corridor_gz/worlds/corridor.sdf`), `use_ros2_control` (false) and `foxglove` (true); while `use_ros2_control` is `true` it shall additionally spawn `joint_state_broadcaster`, `diff_drive` (odom remapped to `/v1/odom`) and `twist_stamper` (`sim.launch.py` lines 28-50; README.md line 43).
+Verified by: `steps/08_proofs.sh` block #5 (`use_ros2_control:=true`, lines 101-115) and block #4 (default); `steps/12_gazebo_patrol.sh` line 12. [GAP] README.md line 43 (launch table) does not list the `foxglove` argument that `sim.launch.py` line 30 declares; README.md line 51 does mention `foxglove:=false` for "both launch files".
+
+REQ-OPERATOROPS-06 (Ubiquitous). `mission.launch.py` shall declare `corridor`, `dry_run` (false), `status_loop` (false), `start_patrol` (true); while `start_patrol` is `false` it shall not start the v1 `patrol_server`, and while `status_loop` is `true` it shall start `status_loop` with `period_s: 30.0` (`mission.launch.py` lines 18-30; README.md line 45).
+Verified by: `steps/08_proofs.sh` block #12 line 87 (`dry_run:=true start_patrol:=false`), `steps/10_scene_proof.sh` line 12, `steps/11_live_model_proof.sh` line 15 (`status_loop:=true`).
+
+REQ-OPERATOROPS-07 (State-driven). While `dry_run` is `true`, `mission_planner` shall not construct an Anthropic client and shall serve `/mission/tool_call` requests with `planner=None` (`mission_planner.py` lines 93, 125-129; `on_tool_call` lines 261-273 uses `self.tools` only).
+Verified by: `ws/src/corridor_planner/test/test_mission_planner_node.py` line 94 (`dry_run:=true` node fixture) and `steps/08_proofs.sh` block #12 lines 82-99.
+
+REQ-OPERATOROPS-08 (Ubiquitous). `env.sh` shall source the first existing of `~/.goske/ros2_jazzy/install/setup.bash` and `/opt/ros/jazzy/setup.bash`, then the workspace overlay `ws/install/setup.bash` if present, and shall default `ROS_DOMAIN_ID` to `42` without overriding a value already set (`env.sh` lines 2-7; commit d1a5526).
+Verified by: NOT VERIFIED (every `steps/*.sh` sources it, none asserts the result).
+
+REQ-OPERATOROPS-09 (Optional). Where `./.env` exists next to `env.sh`, `env.sh` shall source it with `set -a` so that its variables (`THOR_HOST`, `THOR_USER`, `ANTHROPIC_API_KEY`, `FTS_HOST`) are exported to launched nodes; where it is absent, sourcing `env.sh` shall return 0 (`env.sh` line 8; commits b63073d, a08b4b6; `.env.example`).
+Verified by: NOT VERIFIED. [GAP] README.md line 36 says `. ./.env` before `env.sh`; `env.sh` line 8 already sources `.env` itself, the doc is stale.
+
+REQ-OPERATOROPS-10 (Ubiquitous). The repository shall not track `.env`, `ws/build/`, `ws/install/`, `ws/log/` or any `ws/src/*` other than `corridor_*` packages (`.gitignore`; commits 284cb14, ed50cd1); `ANTHROPIC_API_KEY` shall reach the planner only through the process environment (`anthropic.Anthropic()` with no key argument, `mission_planner.py` line 127; CLAUDE.md line 19).
+Verified by: NOT VERIFIED (no test greps the tree for keys).
+
+REQ-OPERATOROPS-11 (Unwanted behaviour). If `ANTHROPIC_API_KEY` is unset when `steps/11_live_model_proof.sh` runs, then the script shall print `ANTHROPIC_API_KEY is not set; put it in .env` and exit 1 before launching anything (`steps/11_live_model_proof.sh` line 6).
+Verified by: the script itself is the check; no automated test.
+
+REQ-OPERATOROPS-12 (Ubiquitous). `cot_bridge` shall default its `host` parameter to `$FTS_HOST` when set and to `127.0.0.1` otherwise, with `port` 8087 (`cot_bridge.py` lines 28-29; README.md line 47).
+Verified by: `ws/src/corridor_cot/test/test_cot_bridge_node.py` line 91 passes `host:=127.0.0.1` explicitly; the `FTS_HOST` fallback is NOT VERIFIED.
+
+REQ-OPERATOROPS-13 (Ubiquitous). Each proof script `steps/08_proofs.sh`, `10_scene_proof.sh`, `11_live_model_proof.sh`, `12_gazebo_patrol.sh`, `13_cot_proof.sh`, `14_marker_proof.sh` shall `cd ~/deletdis/ros2-corridor-swarm`, source `env.sh` then `steps/lib.sh`, append its full stdout/stderr to `~/deletdis/log/<NN>_<name>.log` via `exec > >(tee -a "$LOG") 2>&1`, and print a verdict line of the form `PROOF <issue> PASS|FAIL` (variants: `PROOF 16 REVERSE PASS|FAIL` in 14, `GAZEBO PATROL PASS|FAIL` in 12, `RELAY PASS|FAIL` in 13) (`steps/08_proofs.sh` lines 4-7, `10` lines 3-6, `11` lines 3-7, `12` lines 4-7, `13` lines 5-8, `14` lines 3-6; CLAUDE.md line 20). `steps/09_ros2_control_build.sh` and `15_foxglove_msgs.sh` are build scripts, not proofs.
+Verified by: the scripts themselves; NOT VERIFIED by any test.
+
+REQ-OPERATOROPS-14 (Ubiquitous). `steps/lib.sh` shall export `CORRIDOR_PROOF=<pid of the proof script>` so every process a proof starts carries that marker, and `kill_ours` shall TERM then (after 3 s) KILL only (a) descendants of the calling script and (b) processes of this user whose `CORRIDOR_PROOF` equals the caller's own or names a script pid no longer in `/proc`, skipping `bash|sh|dash|zsh|tee|sshd|ssh|tmux*`; it shall never kill by executable name (`steps/lib.sh` lines 8-58; commits 40b4451, 8779697, a6540f9; CLAUDE.md line 7 "never stop ... processes ... you did not start").
+Verified by: NOT VERIFIED (no test for lib.sh).
+
+REQ-OPERATOROPS-15 (State-driven). While another proof script is still running (its pid exists in `/proc`), `kill_ours` from a different proof shall leave that proof's processes alone (`steps/lib.sh` lines 6-7, 25).
+Verified by: NOT VERIFIED.
+
+REQ-OPERATOROPS-16 (Unwanted behaviour). If no TCP listener is on port 8087 when `steps/13_cot_proof.sh` runs, then the script shall print `no TAK server on 8087`, `PROOF 16 FAIL` and exit 1 (`steps/13_cot_proof.sh` line 12); if `docker ps` is not permitted it shall read the `corridor-fts` log through `sudo -n docker logs` (line 18; commit eca1a62).
+Verified by: the script itself; no automated test.
+
+REQ-OPERATOROPS-17 (Ubiquitous). `steps/04_run.sh` shall launch `day1.launch.py` in a detached tmux window `ros2:run` with the launch output teed to `~/deletdis/log/day1_launch.log`, replacing any previous `run` window (`steps/04_run.sh` lines 22-24; README.md line 28; CLAUDE.md line 20).
+Verified by: `steps/04_run.sh` lines 26-31 (tail of the log, topic list, hz, port 8765). Note: only step 04 uses tmux; steps 08-14 run in the foreground of whatever shell invokes them.
+
+REQ-OPERATOROPS-18 (Unwanted behaviour). If a ROS node test is run with `ROS_DOMAIN_ID=42` (the demo domain set by `env.sh`), then the test module shall exit/fail with a message directing the operator to `ROS_DOMAIN_ID=77`, so tests never publish on the live operator topics (`corridor_nav/test/conftest.py` lines 43-44, `corridor_planner/test/test_mission_planner_node.py` lines 21-22, `corridor_cot/test/test_cot_bridge_node.py` lines 21-22; commits facc91f, 4bab2b5, 1180855).
+Verified by: the guards are at module/fixture scope in those three files; no test of the guard itself.
+
+REQ-OPERATOROPS-19 (Ubiquitous). `foxglove/corridor.json` shall provide panels `map!fleet` (`/v1/fix`, `/v2/fix`, `/v3/fix`, `/map/overlay`), `3D!scene` (`/v1/scan`, `/map/markers`, `/v1/camera/image`; follows tf `v1/base_footprint`; publishes `/clicked_point`, `/goal_pose`, `/initialpose`), `Image!cam` (`/v1/camera/image`), `Plot!xte` (`/v1/follower/cross_track.data`, `/v1/odom.twist.twist.linear.x`), `RawMessages!status` (`/v1/follower/status`), `RawMessages!geofence` (`/fleet/geofence_events`), `Publish!request` (`/mission/request`), `RawMessages!reply` (`/mission/reply`), `RawMessages!trace` (`/mission/llm_trace`), `Teleop!v1` (`/v1/cmd_vel`) (`foxglove/corridor.json`; commits 03ffd78, 7de4a0d, d193ae4; README.md line 51).
+Verified by: NOT VERIFIED (layout is imported by hand on the Mac).
+
+REQ-OPERATOROPS-20 (Ubiquitous). The `map_overlay` node shall publish the corridor polygon, per-vehicle inset routes and heading lines as `foxglove_msgs/GeoJSON` on `/map/overlay` and `visualization_msgs/MarkerArray` on `/map/markers` at 2 Hz, with `foxglove_msgs` built by `steps/15_foxglove_msgs.sh` from `ws/src/foxglove-sdk/ros/src/foxglove_msgs` only (`map_overlay.py` lines 1-41; `corridor_nav/setup.py` line 31; `steps/15_foxglove_msgs.sh`).
+Verified by: `steps/15_foxglove_msgs.sh` line 13 (`ros2 interface show foxglove_msgs/msg/GeoJSON`) for the build; the node is NOT VERIFIED. [GAP] `map_overlay` is in no launch file and not in the README launch/tools table (only `setup.py` line 31 names it); the layout's `/map/overlay` and `/map/markers` panels (REQ-19) are empty unless it is started by hand.
+
+REQ-OPERATOROPS-21 [PLANNED] (Ubiquitous). The project shall document every launch argument and convert the mission-layer nodes to lifecycle nodes with a QoS review (PLAN.md line 70, Phase 5 step 17). README.md lines 38-47 already carry the argument table; lifecycle nodes and QoS review are not in the code.
+Verified by: NOT VERIFIED.
+
+Count: 21 requirements (3 [GAP] notes on 05, 09, 20; 1 [PLANNED]).
+
+Sources: `ws/src/corridor_nav/launch/kinematic.launch.py`, `ws/src/corridor_gz/launch/sim.launch.py`, `ws/src/corridor_sim/launch/day1.launch.py`, `ws/src/corridor_planner/launch/mission.launch.py`, `env.sh`, `.gitignore`, `.env.example`, `steps/lib.sh`, `steps/04_run.sh`, `steps/08_proofs.sh`, `steps/10_scene_proof.sh`, `steps/11_live_model_proof.sh`, `steps/12_gazebo_patrol.sh`, `steps/13_cot_proof.sh`, `steps/14_marker_proof.sh`, `steps/15_foxglove_msgs.sh`, `foxglove/corridor.json`, `ws/src/corridor_planner/corridor_planner/mission_planner.py`, `ws/src/corridor_cot/corridor_cot/cot_bridge.py`, `ws/src/corridor_nav/corridor_nav/map_overlay.py`, `ws/src/corridor_nav/setup.py`, `ws/src/corridor_nav/test/conftest.py`, `ws/src/corridor_planner/test/test_mission_planner_node.py`, `ws/src/corridor_cot/test/test_cot_bridge_node.py`, README.md, ARCHITECTURE.md, PLAN.md, CLAUDE.md; commits d1a5526, b63073d, a08b4b6, 284cb14, ed50cd1, 03ffd78, 7de4a0d, d193ae4, facc91f, 4bab2b5, 1180855, 40b4451, 8779697, a6540f9, eca1a62.
