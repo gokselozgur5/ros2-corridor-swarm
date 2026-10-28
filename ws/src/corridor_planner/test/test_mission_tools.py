@@ -4,6 +4,7 @@ import math
 import pathlib
 import threading
 import time
+from types import SimpleNamespace
 
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
@@ -247,3 +248,36 @@ def test_busy_reply_names_the_request_it_dropped():
     node.on_request(String(data='send the nearest vehicle to marker "RALLY" at 52.701000, -2.998500'))
     assert [m.data for m in node.reply_pub.published] == [
         'busy with the previous request, dropped: send the nearest vehicle to marker "RALLY" at 52.701000, -2.998500']
+
+
+def test_the_request_tag_is_stripped_before_the_model_and_the_dry_run_echo():
+    """cot_bridge prefixes its requests with '[req N] ' so the busy reply, which echoes the request whole, names the
+    placement it dropped; the model and the operator-facing echo see the request without the tag."""
+    log = []
+    node = planner(log)
+    node.busy = threading.Lock()
+    node.reply_pub = FakePublisher(log, name='reply')
+    node.trace_pub = FakePublisher(log, name='trace')
+    order = 'send the nearest vehicle to marker "RALLY" at 52.701000, -2.998500'
+    node.planner = None
+    node.busy.acquire()
+    node.handle_request(f'[req 7] {order}')
+    assert node.reply_pub.published[-1].data == f'dry run, no model: {order}'
+    seen = []
+
+    class FakeModelPlanner:
+        trace = []
+
+        def run(self, text):
+            seen.append(text)
+            return SimpleNamespace(refused=False, error=None, text='sent v1', category=None)
+
+    node.planner = FakeModelPlanner()
+    node.diag = lambda *args, **kw: None   # diagnostics need the node's clock and publisher; not what this test is about
+    node.busy.acquire()
+    node.handle_request(f'[req 8] {order}')
+    assert seen == [order], seen
+    assert node.reply_pub.published[-1].data == 'sent v1'
+    node.busy.acquire()
+    node.on_request(String(data=f'[req 9] {order}'))
+    assert node.reply_pub.published[-1].data == f'busy with the previous request, dropped: [req 9] {order}'
