@@ -27,12 +27,13 @@ BUSY_REPLY = 'busy with the previous request'   # mission_planner's rejection, f
 
 
 def _discard(sock):
-    """Release a connection the bridge no longer uses; shutdown wakes a reader blocked in recv on it."""
+    """Release a connection the bridge no longer uses; shutdown wakes a reader blocked in recv on it.
+    A stand-in with neither method (a test's fake that only reads and writes) is forgotten all the same."""
     if sock is None:
         return
-    for call in (lambda: sock.shutdown(socket.SHUT_RDWR), sock.close):
+    for name, args in (('shutdown', (socket.SHUT_RDWR,)), ('close', ())):
         try:
-            call()
+            getattr(sock, name)(*args)
         except Exception:
             pass
 

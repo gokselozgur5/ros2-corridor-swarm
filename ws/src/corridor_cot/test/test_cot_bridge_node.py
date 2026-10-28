@@ -274,3 +274,9 @@ def test_a_marker_the_planner_rejected_as_busy_is_requested_again_when_re_sent(b
         helper.destroy_node()
     bridge.on_event(xml.decode())                       # ATAK re-sends the identical marker
     assert bridge.requests.lines == [text, text], bridge.requests.lines
+
+
+def test_discard_tolerates_a_connection_without_shutdown_or_close():
+    """A connection stand-in that only reads and writes is forgotten without an error."""
+    cot_bridge._discard(object())
+    cot_bridge._discard(None)
