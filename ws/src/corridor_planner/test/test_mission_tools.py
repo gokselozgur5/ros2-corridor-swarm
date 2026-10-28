@@ -185,6 +185,22 @@ def test_fleet_state_is_kept_for_the_vehicles_the_planner_knows_only():
     assert 'v9' not in node.vehicles                  # a name outside the vehicles parameter is not adopted
 
 
+def test_summary_mode_is_the_observed_one_not_the_commanded_one():
+    log = []
+    node = planner(log)
+    node.on_fleet(fleet(node, v1=(20.0, 20.0, 'idle')))
+    assert node.t_patrol('v1', 0, False)['accepted'] is True
+    assert node._summary('v1')['mode'] == 'idle'          # until fleet_state sees the goal running
+    node.on_fleet(fleet(node, v1=(20.0, 20.0, 'patrol')))
+    assert node._summary('v1')['mode'] == 'patrol'
+
+
+def test_summary_carries_the_goal_id_fleet_state_reports():
+    node = planner([])
+    node.vehicles['v1'].state = VehicleState(name='v1', mode='patrol', goal_id='ab')
+    assert node._summary('v1')['goal_id'] == 'ab'
+
+
 def test_summary_without_a_corridor_has_no_xy():
     node = planner([])
     node.frame = node.poly = None
