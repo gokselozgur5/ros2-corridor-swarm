@@ -42,7 +42,7 @@ Phase 1 closed: Gazebo world, live lidar/camera/imu/navsat, ros2_control diff_dr
 
 ## Local settings
 
-Hosts, users and keys are not in the repo. Copy `.env.example` to `.env`, fill it, and `. ./.env` before `env.sh`. `.env` is gitignored.
+Hosts, users and keys are not in the repo. Copy `.env.example` to `.env` and fill it; `env.sh` exports it. `.env` is gitignored.
 
 ## Launch files and arguments
 
