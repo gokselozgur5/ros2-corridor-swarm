@@ -15,7 +15,7 @@ fail=0
 check() { if [ "$2" = "$3" ]; then echo "ok   $1: $2"; else echo "FAIL $1: got '$2', want '$3'"; fail=1; fi; }
 snapshot() {   # one FleetState as "name mode inside goal_id?" lines
   timeout 10 ros2 topic echo --once /fleet/state corridor_msgs/msg/FleetState 2>/dev/null \
-    | awk '/^- *header:/{inv=1} /^  name:/{n=$2} /^  mode:/{m=$2} /^  inside_corridor:/{i=$2} /^  goal_id:/{g=($2==""||$2=="\x27\x27")?"-":"set"; print n, m, i, g}'
+    | awk '/^  name:/{n=$2} /^  mode:/{m=$2} /^  goal_id:/{g=($2==""||$2=="\x27\x27")?"-":"set"} /^  inside_corridor:/{print n, m, $2, g}'   # inside_corridor is the last field of a VehicleState
 }
 
 ros2 launch corridor_nav kinematic.launch.py n:=3 foxglove:=false > $T/kin.log 2>&1 &
@@ -23,12 +23,12 @@ sleep 8
 echo "--- idle fleet"
 snapshot | tee $T/idle.txt
 check "vehicles listed" "$(awk '{print $1}' $T/idle.txt | tr '\n' ' ')" "v1 v2 v3 "
-check "all inside"     "$(awk '{print $3}' $T/idle.txt | sort -u | tr '\n' ' ')" "True "
+check "all inside"     "$(awk '{print $3}' $T/idle.txt | sort -u | tr '\n' ' ')" "true "
 check "all idle"       "$(awk '{print $2}' $T/idle.txt | sort -u | tr '\n' ' ')" "idle "
 
 echo "--- v2 patrols, v3 gets a raw Path (goto), v1 stays"
 timeout 120 ros2 action send_goal /v2/patrol corridor_msgs/action/Patrol "{vehicle: v2, corridor_id: demo, laps: 0, speed_mps: 0.0, clockwise: false}" > $T/goal.txt 2>&1 &
-ros2 run corridor_nav send_path --ros-args -r __ns:=/v3 -p "points:=[20.0,20.0,80.0,20.0]" 2>&1 | grep -oE "sent.*|no subscriber.*"
+ros2 run corridor_nav send_path --ros-args -r __ns:=/v3 -p "points:=[70.0,20.0,70.0,150.0]" 2>&1 | grep -oE "sent.*|no subscriber.*"   # v3 spawns at (70,20); 130 m north keeps it following well past the snapshot
 sleep 4
 snapshot | tee $T/busy.txt
 check "v1 idle"        "$(awk '$1=="v1"{print $2, $4}' $T/busy.txt)" "idle -"
@@ -45,8 +45,8 @@ ros2 topic pub --once /mission/tool_call std_msgs/msg/String "{data: '{\"name\":
 sleep 3
 python3 - "$T/trace.txt" <<'EOF'
 import json, sys
-raw = open(sys.argv[1]).read().strip()
-ev = json.loads(raw) if raw.startswith('{') else json.loads(raw.strip('"').encode().decode('unicode_escape'))
+raw = open(sys.argv[1]).readline().strip()   # the echo prints the JSON string, then a '---' separator
+ev = json.loads(raw)
 modes = {v['vehicle']: v['mode'] for v in ev['result']['vehicles']}
 print('planner sees', modes)
 sys.exit(0 if modes == {'v1': 'idle', 'v2': 'patrol', 'v3': 'goto'} else 1)
