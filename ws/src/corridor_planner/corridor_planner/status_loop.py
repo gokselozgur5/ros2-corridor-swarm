@@ -19,6 +19,23 @@ from std_msgs.msg import String
 from corridor_msgs.msg import GeofenceEvent
 
 STATUS_MODEL = 'claude-haiku-5-5'
+
+
+def fleet_snapshot(msg, vehicles):
+    """{name: {...}} for the vehicles the loop reports, from one corridor_msgs/FleetState. A vehicle the
+    fleet lists as unknown (no fresh fix) is reported as such with no position; one missing from the message
+    keeps whatever it had (the caller merges)."""
+    out = {}
+    for st in msg.vehicles:
+        if st.name not in vehicles:
+            continue
+        if st.mode == 'unknown':
+            out[st.name] = {'mode': 'unknown'}
+            continue
+        out[st.name] = {'lat': round(st.fix.latitude, 5), 'lon': round(st.fix.longitude, 5),
+                        'speed': round(math.hypot(st.velocity.linear.x, st.velocity.linear.y), 2),
+                        'mode': st.mode, 'inside': bool(st.inside_corridor)}
+    return out
 PRICE_IN, PRICE_OUT = 0.10, 0.50          # $ per 1M tokens, Haiku 5.5 up to 100K prompt
 SYSTEM = ('You write the one-paragraph status line of a small simulated vehicle fleet patrolling a '
           'corridor. Be concrete: which vehicles move, where, anything abnormal. Under 60 words.')
