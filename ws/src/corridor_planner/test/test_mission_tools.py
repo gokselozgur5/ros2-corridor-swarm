@@ -9,6 +9,7 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import String
 
+from corridor_msgs.msg import FleetState, VehicleState
 from corridor_nav.geofence import LocalFrame, load_geojson_polygon
 from corridor_planner import mission_planner as mp
 from corridor_planner.mission_planner import MissionPlanner, Vehicle
@@ -154,6 +155,34 @@ def test_summary_xy_come_from_the_fix():
     d = node._summary('v1')
     assert (d['x'], d['y']) == (20.0, 20.0), d
     assert d['speed_mps'] == 1.5 and d['inside_corridor'] is True and d['edge_distance_m'] == 20.0
+
+
+def fleet(node, **vehicles):
+    """A FleetState as corridor_nav's fleet_state publishes it: name -> (x, y, mode) in the corridor frame,
+    or None for a vehicle whose fix fleet_state does not have (mode 'unknown', fix zeroed)."""
+    msg = FleetState(corridor_id=node.corridor_id)
+    for name, spec in vehicles.items():
+        st = VehicleState(name=name)
+        if spec is None:
+            st.mode = 'unknown'
+        else:
+            x, y, st.mode = spec
+            st.fix = fix_at(node.frame, x, y)
+            st.pose.position.x, st.pose.position.y = x, y
+            st.inside_corridor = True
+        msg.vehicles.append(st)
+    return msg
+
+
+# ----- ADR-0015: the planner reads /fleet/state ------------------------------------------------------
+
+def test_fleet_state_is_kept_for_the_vehicles_the_planner_knows_only():
+    node = planner([])
+    node.vehicles['v2'] = Vehicle()
+    node.on_fleet(fleet(node, v1=(20.0, 70.0, 'goto'), v9=(1.0, 1.0, 'idle')))
+    assert node.vehicles['v1'].state.mode == 'goto'
+    assert node.vehicles['v2'].state is None
+    assert 'v9' not in node.vehicles                  # a name outside the vehicles parameter is not adopted
 
 
 def test_summary_without_a_corridor_has_no_xy():
