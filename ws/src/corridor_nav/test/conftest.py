@@ -234,6 +234,11 @@ NavSatFix = message('NavSatFix', header=Header, status=NavSatStatus, latitude=fl
 Imu = message('Imu', header=Header, orientation=Quaternion, angular_velocity=Vector3, linear_acceleration=Vector3)
 GeofenceEvent = message('GeofenceEvent', header=Header, vehicle=str, corridor_id=str, type=int, distance_m=float, fix=NavSatFix)
 GeofenceEvent.EXIT, GeofenceEvent.ENTER, GeofenceEvent.WARN = 0, 1, 2
+ColorRGBA = message('ColorRGBA', r=float, g=float, b=float, a=float)
+Marker = message('Marker', header=Header, ns=str, id=int, type=int, points=list, scale=Vector3, color=ColorRGBA)
+Marker.ARROW, Marker.LINE_STRIP = 0, 4
+MarkerArray = message('MarkerArray', markers=list)
+GeoJSON = message('GeoJSON', geojson=str)
 
 
 class Patrol:
@@ -264,7 +269,9 @@ def install_stubs():
     module('geometry_msgs').msg = module('geometry_msgs.msg', Point=Point, Pose=Pose, PoseStamped=PoseStamped,
                                          Quaternion=Quaternion, Twist=Twist, Vector3=Vector3)
     module('nav_msgs').msg = module('nav_msgs.msg', Odometry=Odometry, Path=Path)
-    module('std_msgs').msg = module('std_msgs.msg', Header=Header, String=String, Float32=Float32)
+    module('std_msgs').msg = module('std_msgs.msg', Header=Header, String=String, Float32=Float32, ColorRGBA=ColorRGBA)
+    module('visualization_msgs').msg = module('visualization_msgs.msg', Marker=Marker, MarkerArray=MarkerArray)
+    module('foxglove_msgs').msg = module('foxglove_msgs.msg', GeoJSON=GeoJSON)
     module('sensor_msgs').msg = module('sensor_msgs.msg', Imu=Imu, NavSatFix=NavSatFix, NavSatStatus=NavSatStatus)
     module('builtin_interfaces').msg = module('builtin_interfaces.msg', Time=Time)
     corridor_msgs = module('corridor_msgs')
