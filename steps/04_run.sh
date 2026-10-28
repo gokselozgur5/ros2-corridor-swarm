@@ -2,6 +2,8 @@
 # Day 1 step 4: git hygiene for the cloned sources, then launch and prove the topics and the bridge port.
 set -eo pipefail
 cd "${CORRIDOR_ROOT:-$HOME/deletdis/ros2-corridor-swarm}"
+# Day-1 script: it writes the two-entry deps.repos, which on an initialised checkout would replace the manifest.
+if [ -e ws/deps.repos ]; then echo "04_run.sh: ws/deps.repos already exists, this checkout is initialised; refusing to run" >&2; exit 1; fi
 . ./env.sh
 # Cloned sources are not ours: track them as a vcs repos file, not as embedded repos.
 cat > ws/deps.repos <<'REPOS'
