@@ -79,7 +79,6 @@ class Vehicle:
         self.image = None
         self.state = None      # the vehicle's last corridor_msgs/VehicleState from /fleet/state
         self.goal = None       # ClientGoalHandle of the active patrol
-        self.mode = 'idle'
 
 
 class MissionPlanner(Node):
@@ -182,7 +181,6 @@ class MissionPlanner(Node):
         if not handle.accepted:
             return {'accepted': False, 'reason': 'rejected by patrol server'}
         self.vehicles[vehicle].goal = handle
-        self.vehicles[vehicle].mode = 'patrol'
         return {'accepted': True, 'vehicle': vehicle, 'laps': laps, 'clockwise': clockwise}
 
     def t_goto(self, vehicle, lat, lon):
@@ -208,7 +206,6 @@ class MissionPlanner(Node):
             ps.pose.orientation.w = 1.0
             path.poses.append(ps)
         self.path_pubs[vehicle].publish(path)
-        v.mode = 'goto'
         return {'accepted': True, 'vehicle': vehicle, 'x': round(x, 1), 'y': round(y, 1)}
 
     def _cancel_tracked(self, vehicle):
@@ -219,7 +216,6 @@ class MissionPlanner(Node):
         if v.goal is None:
             return
         handle, v.goal = v.goal, None
-        v.mode = 'stopped'   # until the successor sets its own; a rejected successor must not leave 'patrol' with no goal
         status = stop_goal(handle, STOP_TIMEOUT_S)
         if status != 'finished':
             self.get_logger().warn(f'{vehicle}: patrol goal not finished {STOP_TIMEOUT_S} s after cancel ({status})')
@@ -240,7 +236,6 @@ class MissionPlanner(Node):
                 self.get_logger().warn(f'{vehicle}: patrol goal not finished {STOP_TIMEOUT_S} s after cancel ({status})')
         else:
             stop_follower()
-        v.mode = 'stopped'
         return {'stopped': True, 'vehicle': vehicle, 'cancelled_patrol': cancelled, 'finished': finished}
 
     def t_events(self, limit):

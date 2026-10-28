@@ -116,7 +116,6 @@ def test_goto_path_starts_at_the_fix_not_at_odom():
     start, goal = path.poses[0].pose.position, path.poses[1].pose.position
     assert math.isclose(start.x, 20.0, abs_tol=1e-6) and math.isclose(start.y, 20.0, abs_tol=1e-6), (start.x, start.y)
     assert math.isclose(goal.x, 100.0, abs_tol=1e-6) and math.isclose(goal.y, 20.0, abs_tol=1e-6)
-    assert v.mode == 'goto'
 
 
 def test_goto_without_a_fix_is_refused_and_cancels_nothing():
@@ -124,12 +123,11 @@ def test_goto_without_a_fix_is_refused_and_cancels_nothing():
     node = planner(log)
     v = node.vehicles['v1']
     v.goal = FakeGoalHandle(log)
-    v.mode = 'patrol'
     lat, lon = node.frame.to_latlon(100.0, 20.0)
     out = node.t_goto('v1', lat, lon)
     assert out['accepted'] is False and 'fix' in out['reason'], out
     assert log == [] and node.path_pubs['v1'].published == []
-    assert v.goal is not None and v.mode == 'patrol'
+    assert v.goal is not None
 
 
 def test_goto_outside_the_corridor_is_refused_before_anything_is_stopped():
@@ -279,16 +277,15 @@ def test_patrol_and_goto_publish_no_empty_path_of_their_own():
     assert node.t_stop('v1')['stopped'] is True and log[-1] == 'path_empty'   # only the operator's stop clears the follower itself
 
 
-def test_a_rejected_successor_does_not_leave_the_vehicle_reported_as_patrolling():
+def test_a_rejected_successor_leaves_no_tracked_goal():
     log = []
     node = planner(log)
     v = node.vehicles['v1']
     v.goal = FakeGoalHandle(log, exit_delay_s=0.05)
-    v.mode = 'patrol'
     node.patrol_clients['v1'].accepted = False
     out = node.t_patrol('v1', 0, False)
     assert out['accepted'] is False
-    assert v.goal is None and v.mode == 'stopped', (v.goal, v.mode)
+    assert v.goal is None and 'old_result' in log, (v.goal, log)
 
 
 # ----- busy_marker (Aether's review, 2026-10-28) --------------------------------------------------------
