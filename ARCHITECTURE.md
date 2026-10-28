@@ -19,6 +19,7 @@ Everything is simulated. The target is a small fleet of ground vehicles that liv
 │   │   mission_planner  (Claude tool use)  ── tools ──┐            │      │
 │   │   patrol_server    (action: Patrol)              │            │      │
 │   │   geofence_monitor (corridor polygon, GeoJSON)   │            │      │
+│   │   fleet_state      (/fleet/state from fix, imu, odom, goals)  │      │
 │   └──────────────────────────────▲───────────────────┼────────────┘      │
 │                                  │ /vN/odom /vN/fix  │ /vN/cmd_vel        │
 │   ┌──────────────────────────────┴───────────────────▼────────────┐      │
