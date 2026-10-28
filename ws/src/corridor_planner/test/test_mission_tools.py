@@ -244,6 +244,6 @@ def test_busy_reply_names_the_request_it_dropped():
     node.busy = threading.Lock()
     node.busy.acquire()
     node.reply_pub = FakePublisher(log, name='reply')
-    node.on_request(String(data='send the nearest vehicle to marker RALLY at 52.701000, -2.998500'))
+    node.on_request(String(data='send the nearest vehicle to marker "RALLY" at 52.701000, -2.998500'))
     assert [m.data for m in node.reply_pub.published] == [
-        'busy with the previous request, dropped: send the nearest vehicle to marker RALLY at 52.701000, -2.998500']
+        'busy with the previous request, dropped: send the nearest vehicle to marker "RALLY" at 52.701000, -2.998500']

@@ -2,10 +2,11 @@
 
 Every vehicle's fix/odom -> one PLI event per `period_s` over TCP to the TAK server (FTS_HOST:8087,
 plain CoT, no TLS); a vehicle whose fix is older than `fix_timeout_s` is left out, so its icon goes stale
-in ATAK. Events from the server that are markers -> std_msgs/String on /mission/request
-("send the nearest vehicle to <callsign> at lat, lon"), so the planner can act on them; one request per
-placement (a uid re-sent at the same spot is a rename or a refresh, not a new order), none for a marker
-already stale. Reconnects on any socket error; a (re)connection's first write is a single event, which
+in ATAK. Events from the server that are markers -> std_msgs/String on /mission/request (cot.request_text:
+'send the nearest vehicle to marker "<label>" at lat, lon', the label a sanitised callsign or uid, since the
+stream is unauthenticated and the text becomes the model's user turn), so the planner can act on them; one
+request per placement (a uid re-sent at the same spot is a rename or a refresh, not a new order), none for a
+marker already stale. Reconnects on any socket error; a (re)connection's first write is a single event, which
 FreeTAKServer takes as the client's registration, and the fleet follows on the next tick. The reader thread
 forgets only the connection it was reading, so a replacement the sender made survives the old one's EOF.
 A request the planner rejected as busy is forgotten by the marker gate, so ATAK's re-send of that marker
@@ -21,7 +22,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from std_msgs.msg import String
 
-from corridor_cot.cot import MarkerGate, course_from_quaternion, marker_or_reason, pli_events
+from corridor_cot.cot import MarkerGate, course_from_quaternion, marker_or_reason, pli_events, request_text
 
 BUSY_REPLY = 'busy with the previous request'   # mission_planner's rejection, followed by ', dropped: <request>'
 
@@ -134,7 +135,7 @@ class CotBridge(Node):
             self.get_logger().warn(f'marker dropped: {reason}')
         if not marker or marker['uid'].startswith('corridor-'):
             return
-        text = f"send the nearest vehicle to marker {marker['callsign'] or marker['uid']} at {marker['lat']:.6f}, {marker['lon']:.6f}"
+        text = request_text(marker)
         with self.gate_lock:
             if not self.gate.admit(marker):
                 return
