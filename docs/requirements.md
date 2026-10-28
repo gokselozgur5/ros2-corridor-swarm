@@ -214,8 +214,8 @@ Verified by: `test/test_planner.py::test_request_shape_has_fallbacks_and_no_cmd_
 REQ-PLANNER-04 (Event-driven): When a `std_msgs/String` arrives on `/mission/request`, the mission_planner shall run `Planner.run` on a daemon worker thread and publish the outcome text on `/mission/reply` (with `dry_run:=true` it replies `dry run, no model: <text>` without a model call) (`mission_planner.py:93,115,118,275-302,306-308`).
 Verified by: `steps/11_live_model_proof.sh:21-30` (#12/#13, model path, needs ANTHROPIC_API_KEY); no unit test of `on_request`/`handle_request`.
 
-REQ-PLANNER-05 (State-driven): While a previous request is still being handled, the mission_planner shall reply `busy with the previous request` on `/mission/reply` and not start a second model run (`mission_planner.py:131,276-278,303-304`).
-Verified by: NOT VERIFIED.
+REQ-PLANNER-05 (State-driven): While a previous request is still being handled, the mission_planner shall reply `busy with the previous request, dropped: <request>` on `/mission/reply` and not start a second model run (`mission_planner.py:135,280-281,286,308`). cot_bridge matches the prefix and takes the dropped text to forget that marker's placement, so ATAK's re-send of the marker is asked again (`cot_bridge.py:26,147-156`).
+Verified by: `test/test_mission_tools.py::test_busy_reply_names_the_request_it_dropped` (stub rclpy); the bridge side by `corridor_cot/test/test_cot_bridge_node.py::test_a_marker_the_planner_rejected_as_busy_is_requested_again_when_re_sent` (real rclpy, Thor).
 
 REQ-PLANNER-06 (Ubiquitous): The Planner shall check `stop_reason` before reading `content` on every response (`planner.py:106-118`).
 Verified by: `test/test_planner.py::test_refusal_is_an_outcome_not_an_exception` (refusal response with `content=[]` handled).
