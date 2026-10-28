@@ -1,5 +1,6 @@
 """Autonomy layer on kinematic unicycles, no Gazebo. `n` vehicles v1..vn inside the demo corridor,
-each with a follower and a patrol server; one geofence monitor for all (issue #10)."""
+each with a follower and a patrol server; one geofence monitor, one fleet_state and, unless overlay:=false,
+one map_overlay (corridor, routes and heading lines for the Foxglove map) for all (issues #10, #20, #19)."""
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -17,6 +18,7 @@ def launch_setup(context):
     first = int(LaunchConfiguration('first').perform(context))
     lookahead = float(LaunchConfiguration('lookahead_m').perform(context))
     speed = float(LaunchConfiguration('speed_mps').perform(context))
+    overlay = LaunchConfiguration('overlay').perform(context).lower() == 'true'
     names = [f'v{i}' for i in range(first, first + n)]
     nodes = []
     for i, v in enumerate(names):
@@ -33,6 +35,9 @@ def launch_setup(context):
                       parameters=[{'corridor_geojson': corridor, 'vehicles': names, 'warn_margin_m': 15.0}]))
     nodes.append(Node(package='corridor_nav', executable='fleet_state', name='fleet_state',
                       parameters=[{'corridor_geojson': corridor, 'vehicles': names}]))
+    if overlay:   # the routes it draws are the patrol servers' insets, 30 m plus 8 m per vehicle
+        nodes.append(Node(package='corridor_nav', executable='map_overlay', name='map_overlay',
+                          parameters=[{'corridor_geojson': corridor, 'vehicles': names, 'insets_m': [30.0 + 8.0 * i for i in range(len(names))]}]))
     return nodes
 
 
@@ -45,6 +50,7 @@ def generate_launch_description():
         DeclareLaunchArgument('lookahead_m', default_value='3.0'),
         DeclareLaunchArgument('speed_mps', default_value='3.0'),
         DeclareLaunchArgument('foxglove', default_value='true'),
+        DeclareLaunchArgument('overlay', default_value='true'),   # map_overlay needs foxglove_msgs (apt ros-jazzy-foxglove-msgs or steps/15)
         Node(package='foxglove_bridge', executable='foxglove_bridge', name='foxglove_bridge',
              condition=IfCondition(LaunchConfiguration('foxglove')),
              parameters=[{'port': 8765, 'address': '0.0.0.0', 'send_buffer_limit': 100000000}]),
