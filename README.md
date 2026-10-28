@@ -39,7 +39,7 @@ Hosts, users and keys are not in the repo. Copy `.env.example` to `.env`, fill i
 
 | launch | package | arguments | what it starts |
 |---|---|---|---|
-| `kinematic.launch.py` | corridor_nav | `n` (vehicles, 1), `first` (1), `corridor` (GeoJSON path, also the follower's frame origin), `lookahead_m` (3.0), `speed_mps` (3.0), `foxglove` (true) | unicycle_sim, waypoint_follower, patrol_server per vehicle; one geofence_monitor |
+| `kinematic.launch.py` | corridor_nav | `n` (vehicles, 1), `first` (1), `corridor` (GeoJSON path, also the follower's frame origin), `lookahead_m` (3.0), `speed_mps` (3.0), `foxglove` (true) | unicycle_sim, waypoint_follower, patrol_server per vehicle; one geofence_monitor, one fleet_state (`/fleet/state`) |
 | `sim.launch.py` | corridor_gz | `world` (corridor.sdf), `use_ros2_control` (false) | headless gz sim, v1 spawned from the xacro, ros_gz bridge, robot_state_publisher; with ros2_control: joint_state_broadcaster, diff_drive, twist_stamper |
 | `display.launch.py` | corridor_description | none | robot_state_publisher on the UGV xacro |
 | `mission.launch.py` | corridor_planner | `corridor`, `dry_run` (false), `status_loop` (false), `start_patrol` (true) | patrol_server for v1, mission_planner (Opus), optional status_loop (Haiku) |
