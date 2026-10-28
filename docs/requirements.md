@@ -190,7 +190,9 @@ Verified by: steps/08_proofs.sh:66-80 (proof #10: n:=3, each of /v1 /v2 /v3 patr
 REQ-MISSION-18. [GAP] The `patrol_server` shall honour the goal field `speed_mps` (0 = vehicle default) when driving the follower (Patrol.action:5). The field is never read by patrol_server.py (no `speed_mps` reference); the follower speed comes only from its own `speed_mps` parameter (waypoint_follower.py:39, 111; kinematic.launch.py:28). The planner always sends 0.0 (corridor_planner/mission_planner.py:170).
 Verified by: NOT VERIFIED.
 
-REQ-MISSION-19. [GAP] The mission layer shall publish `corridor_msgs/FleetState` on `/fleet/state` (ARCHITECTURE.md:100 states nobody publishes it; `grep -rn FleetState ws/src` outside corridor_msgs finds no use at all).
+REQ-MISSION-19. The mission layer shall publish `corridor_msgs/FleetState` on `/fleet/state` every `period_s` (0.5 s) with one `VehicleState` per launched vehicle: position from the fix in the corridor frame, heading from the IMU, speed from odom, `inside_corridor`, `goal_id` from the patrol action status, `mode` in {idle, patrol, goto, geofence_hold, unknown}. (ADR-0015, `corridor_nav/fleet_state.py`.)
+Verified by: `test/test_fleet_state.py` (14 tests), `steps/16_fleet_state_proof.sh` (PROOF 20).
+REQ-MISSION-19-WAS. [RESOLVED 2026-10-28] The mission layer shall publish `corridor_msgs/FleetState` on `/fleet/state` (ARCHITECTURE.md:100 states nobody publishes it; `grep -rn FleetState ws/src` outside corridor_msgs finds no use at all).
 Verified by: NOT VERIFIED.
 
 REQ-MISSION-20. [PLANNED] Where the Gazebo backend runs multiple vehicles, the system shall keep `ros2 topic hz /clock` at or above 50 Hz with three vehicles patrolling (PLAN.md:43-44). sim.launch.py spawns only v1 (ws/src/corridor_gz/launch/sim.launch.py:1, 38); kinematic v2/v3 can run beside it via `first:=2 n:=2` (kinematic.launch.py:42).
@@ -265,7 +267,7 @@ Verified by: NOT VERIFIED.
 REQ-PLANNER-21 (Ubiquitous) [PLANNED] [GAP]: The README shall record the measured status-loop cost per hour from `usage`, target < $0.20/h (PLAN.md:56-57). README.md contains no cost figure (grep `cost|usd` finds none); PLAN.md:11 says #14 was proven live but the number was not written down.
 Verified by: NOT VERIFIED.
 
-REQ-PLANNER-22 (Ubiquitous) [GAP]: The mission_planner's `list_vehicles` shall read `/fleet/state` (ARCHITECTURE.md:55). Code instead subscribes per vehicle to `/vN/fix`, `/vN/odom`, `/vN/follower/status` and summarises itself (`mission_planner.py:104-111,136-158`); ARCHITECTURE.md:100 lists this as open item 3; no node under `ws/src/corridor_*` publishes `/fleet/state` (grep).
+REQ-PLANNER-22 (Ubiquitous): The mission_planner's `list_vehicles` and `get_vehicle` shall answer from `/fleet/state` alone: mode, goal_id, speed and the fix come from the last `FleetState`, and a vehicle the fleet reports `unknown` has no fix (goto refuses). Verified by: `test_mission_tools.py::test_fleet_state_is_kept_for_the_vehicles_the_planner_knows_only`, `::test_summary_mode_is_the_observed_one_not_the_commanded_one`, `::test_a_vehicle_the_fleet_reports_unknown_loses_its_fix_and_goto_refuses`; `steps/16_fleet_state_proof.sh`. [RESOLVED 2026-10-28] Before: the mission_planner's `list_vehicles` shall read `/fleet/state` (ARCHITECTURE.md:55). Code instead subscribes per vehicle to `/vN/fix`, `/vN/odom`, `/vN/follower/status` and summarises itself (`mission_planner.py:104-111,136-158`); ARCHITECTURE.md:100 lists this as open item 3; no node under `ws/src/corridor_*` publishes `/fleet/state` (grep).
 Verified by: NOT VERIFIED.
 
 REQ-PLANNER-23 (Unwanted behaviour): If a response ends with `stop_reason != 'tool_use'` but still contains `tool_use` blocks (e.g. cut by `max_tokens`), then the Planner shall not run those tools, append a `reply` trace event with that `stop_reason`, and drop the exchange so no `tool_use` is left unanswered (`planner.py:117-124`).
