@@ -43,7 +43,7 @@ Everything is simulated. The target is a small fleet of ground vehicles that liv
 
 **Vehicle.** One ROS namespace per vehicle. `ros2_control` with `diff_drive_controller` turns `cmd_vel` into wheel joint velocities inside Gazebo, so motors have inertia, slip and limits. `waypoint_follower` is a pure-pursuit controller: it takes a path, publishes `cmd_vel`, reports progress. Nav2 is deliberately not in the first build (it is ~40 source packages on this underlay); it can replace `waypoint_follower` later without touching the mission layer.
 
-**Mission.** `patrol_server` is a ROS action: given a corridor id and a vehicle, it generates the patrol route along the polygon and feeds the follower. `geofence_monitor` watches every vehicle fix against the polygon and raises `/fleet/geofence_events`. `mission_planner` is the Claude node: natural language in, ROS actions out.
+**Mission.** `patrol_server` is a ROS action: given a corridor id and a vehicle, it generates the patrol route along the polygon and feeds the follower. `geofence_monitor` watches every vehicle fix against the polygon and raises `/fleet/geofence_events`. `fleet_state` publishes `/fleet/state` (`FleetState`), the one view of the fleet the planner, the status loop and the CoT bridge read. `mission_planner` is the Claude node: natural language in, ROS actions out.
 
 **Operator.** Foxglove for the ROS view (map panel on fixes, 3D panel on tf, plots on cmd_vel). ATAK for the tactical view: `cot_bridge` turns `/fleet/state` into Cursor-on-Target events and sends them to FreeTAKServer; ATAK markers come back as waypoints.
 
