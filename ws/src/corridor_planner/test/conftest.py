@@ -81,6 +81,9 @@ if not _REAL_ROS:
     rclpy.callback_groups.ReentrantCallbackGroup = type('ReentrantCallbackGroup', (), {})
     rclpy.executors = types.ModuleType('rclpy.executors')
     rclpy.executors.MultiThreadedExecutor = type('MultiThreadedExecutor', (), {})
+    rclpy.qos = types.ModuleType('rclpy.qos')
+    rclpy.qos.DurabilityPolicy = type('DurabilityPolicy', (), {'TRANSIENT_LOCAL': 1, 'VOLATILE': 2})
+    rclpy.qos.QoSProfile = type('QoSProfile', (), {'__init__': lambda self, **kw: self.__dict__.update(kw)})
 
     for pkg, msg in (('builtin_interfaces', builtin), ('geometry_msgs', geometry), ('nav_msgs', nav),
                      ('sensor_msgs', sensor), ('std_msgs', std), ('diagnostic_msgs', diag)):
@@ -90,5 +93,5 @@ if not _REAL_ROS:
     sys.modules['corridor_msgs'] = types.ModuleType('corridor_msgs')
     sys.modules['corridor_msgs'].msg, sys.modules['corridor_msgs'].action = corridor_msg, corridor_action
     sys.modules['corridor_msgs.msg'], sys.modules['corridor_msgs.action'] = corridor_msg, corridor_action
-    for name in ('rclpy', 'rclpy.node', 'rclpy.action', 'rclpy.callback_groups', 'rclpy.executors'):
+    for name in ('rclpy', 'rclpy.node', 'rclpy.action', 'rclpy.callback_groups', 'rclpy.executors', 'rclpy.qos'):
         sys.modules[name] = rclpy if name == 'rclpy' else getattr(rclpy, name.split('.')[1])

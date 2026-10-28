@@ -22,6 +22,7 @@ from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
 from sensor_msgs.msg import Image, NavSatFix
 from std_msgs.msg import String
 
@@ -105,7 +106,10 @@ class MissionPlanner(Node):
             self.vehicles[v] = Vehicle()
             self.create_subscription(NavSatFix, f'/{v}/fix', lambda m, v=v: setattr(self.vehicles[v], 'fix', m), 10, callback_group=cb)
             self.create_subscription(Odometry, f'/{v}/odom', lambda m, v=v: setattr(self.vehicles[v], 'odom', m), 10, callback_group=cb)
-            self.create_subscription(String, f'/{v}/follower/status', lambda m, v=v: setattr(self.vehicles[v], 'status', m.data), 10, callback_group=cb)
+            # the follower latches its status (transient local, depth 1): a planner that starts later only
+            # receives the retained sample when it asks for the same durability
+            self.create_subscription(String, f'/{v}/follower/status', lambda m, v=v: setattr(self.vehicles[v], 'status', m.data),
+                                     QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL), callback_group=cb)
             self.create_subscription(Image, f'/{v}/camera/image', lambda m, v=v: setattr(self.vehicles[v], 'image', m), 1, callback_group=cb)
             self.path_pubs[v] = self.create_publisher(Path, f'/{v}/path', 10)
             self.patrol_clients[v] = ActionClient(self, Patrol, f'/{v}/patrol', callback_group=cb)
