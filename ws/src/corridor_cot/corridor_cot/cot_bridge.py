@@ -8,10 +8,12 @@ placement (a uid re-sent at the same spot is a rename or a refresh, not a new or
 already stale. Reconnects on any socket error; a (re)connection's first write is a single event, which
 FreeTAKServer takes as the client's registration, and the fleet follows on the next tick. The reader thread
 forgets only the connection it was reading, so a replacement the sender made survives the old one's EOF.
-Never raises out of a callback."""
+A request the planner rejected as busy is forgotten by the marker gate, so ATAK's re-send of that marker
+is asked again. Never raises out of a callback."""
 import os
 import socket
 import threading
+from collections import OrderedDict
 
 import rclpy
 from nav_msgs.msg import Odometry
@@ -20,6 +22,8 @@ from sensor_msgs.msg import NavSatFix, NavSatStatus
 from std_msgs.msg import String
 
 from corridor_cot.cot import MarkerGate, course_from_quaternion, marker_or_reason, pli_events
+
+BUSY_REPLY = 'busy with the previous request'   # mission_planner's rejection, followed by ', dropped: <request>'
 
 
 def _discard(sock):
@@ -51,6 +55,8 @@ class CotBridge(Node):
                 course=course_from_quaternion(m.pose.pose.orientation.z, m.pose.pose.orientation.w),
                 speed=abs(m.twist.twist.linear.x)), 10)
         self.request_pub = self.create_publisher(String, '/mission/request', 10)
+        self.create_subscription(String, '/mission/reply', self.on_reply, 10)
+        self.pending = OrderedDict()   # request text -> marker uid, for matching the planner's busy reply
         self.sock = None
         self.lock = threading.Lock()
         self.create_timer(self.get_parameter('period_s').value, self.send_pli)
@@ -128,6 +134,18 @@ class CotBridge(Node):
             text = f"send the nearest vehicle to marker {marker['callsign'] or marker['uid']} at {marker['lat']:.6f}, {marker['lon']:.6f}"
             self.request_pub.publish(String(data=text))
             self.get_logger().info(f'marker -> request: {text}')
+            self.pending[text] = marker['uid']
+            while len(self.pending) > 32:
+                self.pending.popitem(last=False)
+
+    def on_reply(self, msg):
+        """The planner drops a request while a plan runs: forget that placement so the marker's re-send is asked again."""
+        if not msg.data.startswith(BUSY_REPLY):
+            return
+        uid = self.pending.pop(msg.data.partition('dropped: ')[2], None)
+        if uid is not None:
+            self.gate.forget(uid)
+            self.get_logger().warn(f'planner busy, marker {uid} will be requested again when ATAK re-sends it')
 
 
 def main():

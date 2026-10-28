@@ -278,7 +278,7 @@ class MissionPlanner(Node):
 
     def on_request(self, msg):
         if not self.busy.acquire(blocking=False):
-            self.reply('busy with the previous request')
+            self.reply(f'busy with the previous request, dropped: {msg.data}')   # cot_bridge matches this text
             return
         try:
             threading.Thread(target=self.handle_request, args=(msg.data,), daemon=True).start()

@@ -134,6 +134,10 @@ class MarkerGate:
             self.sent.popitem(last=False)
         return True
 
+    def forget(self, uid):
+        """The placement was not acted on (the planner was busy): the next event for this uid passes again."""
+        self.sent.pop(uid, None)
+
 
 def course_from_quaternion(z, w):
     """ENU yaw (quaternion z,w) -> compass course in degrees, 0 = north, clockwise."""

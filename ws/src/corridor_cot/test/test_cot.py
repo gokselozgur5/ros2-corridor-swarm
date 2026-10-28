@@ -126,3 +126,12 @@ def test_marker_gate_forgets_the_oldest_uid_beyond_its_capacity_and_never_blocks
     assert not gate.admit({'uid': 'c', **here}), 'c is still remembered'
     assert len(gate.sent) <= 2
     assert gate.admit({'uid': '', **here}) and gate.admit({'uid': '', **here}), 'no uid, nothing to deduplicate on'
+
+
+def test_marker_gate_forget_lets_the_same_placement_pass_again():
+    gate = MarkerGate(move_m=5.0)
+    marker = {'uid': 'operator-1', 'lat': 52.701, 'lon': -2.9985}
+    assert gate.admit(marker) and not gate.admit(marker)
+    gate.forget('operator-1')
+    assert gate.admit(marker)
+    gate.forget('never-seen')
