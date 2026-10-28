@@ -144,6 +144,7 @@ class MissionPlanner(Node):
             if v is None:
                 continue
             v.state = st
+            v.fix = st.fix if st.mode != 'unknown' else None   # unknown: fleet_state has no fresh fix for it
 
     # ----- tools -----------------------------------------------------------------------------
     def _summary(self, name):
