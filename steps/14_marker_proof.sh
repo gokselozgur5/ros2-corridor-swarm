@@ -25,8 +25,10 @@ s.sendall(xml.encode()); s.sendall(xml.encode())
 import time; time.sleep(3); s.close()
 print('marker sent twice: the bridge forwards the placement once, the repeat at the same spot is dropped (marker_move_m)')
 PY
-for i in $(seq 1 20); do grep -q "RALLY1" /tmp/req16.txt 2>/dev/null && break; sleep 1; done
-grep -m1 "RALLY1" /tmp/req16.txt || { echo "no request seen"; grep -i "marker\|warn\|error" /tmp/cot16b.log | tail -3; }
-grep -q "RALLY1" /tmp/req16.txt && echo "PROOF 16 REVERSE PASS (marker relayed by the server reached /mission/request)" || echo "PROOF 16 REVERSE FAIL"
+# cot.request_text quotes the label (a callsign is display text, never an order); ros2 topic echo --field prints a str raw
+WANT='send the nearest vehicle to marker "RALLY1" at 52.701000, -2.998500'
+for i in $(seq 1 20); do grep -qF "$WANT" /tmp/req16.txt 2>/dev/null && break; sleep 1; done
+grep -m1 -F "$WANT" /tmp/req16.txt || { echo "no request with the quoted label seen; requests:"; cat /tmp/req16.txt 2>/dev/null; grep -i "marker\|warn\|error" /tmp/cot16b.log | tail -3; }
+grep -qF "$WANT" /tmp/req16.txt && echo "PROOF 16 REVERSE PASS (marker relayed by the server reached /mission/request with the quoted label)" || echo "PROOF 16 REVERSE FAIL"
 cleanup
 echo "=== $(date -Is) done"
