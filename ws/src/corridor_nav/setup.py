@@ -30,6 +30,7 @@ setup(
             'wasd = corridor_nav.wasd:main',
             'map_overlay = corridor_nav.map_overlay:main',
             'clicked_goal = corridor_nav.clicked_goal:main',
+            'fleet_state = corridor_nav.fleet_state:main',
         ],
     },
 )
