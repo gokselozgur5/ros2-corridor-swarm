@@ -1,11 +1,12 @@
 """ROS side of the mission planner.
 
 /mission/request (std_msgs/String) -> Planner.run -> /mission/reply (String) and /mission/llm_trace
-(String, one JSON object per event). cot_bridge prefixes its requests with a tag, '[req N] ', and finds the
-placement a busy reply gave up on by it: the busy reply echoes the request whole, the model and the dry-run
-echo see it without the tag. Tools read the vehicles' fix/odom/follower status, send Patrol
-goals, publish a two-pose Path (fix, target) for goto, cancel for stop. The planner never publishes cmd_vel.
-Vehicles are positioned by their fix through the corridor frame, as the follower does; odom is speed only (#19).
+(String, one JSON object per event). Tools read the fleet from /fleet/state (corridor_msgs/FleetState,
+published by corridor_nav's fleet_state, ADR-0015), send Patrol goals, publish a two-pose Path (fix,
+target) for goto, cancel for stop. The planner never publishes cmd_vel. A vehicle's position is its fix
+through the corridor frame, as the follower does (#19); mode and speed are what fleet_state observed.
+cot_bridge prefixes its requests with a tag, '[req N] ', and finds the placement a busy reply gave up on
+by it: the busy reply echoes the request whole, the model and the dry-run echo see it without the tag.
 Refusals and SDK errors become diagnostics on /diagnostics, not crashes.
 """
 import collections
@@ -19,18 +20,17 @@ import time
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import PoseStamped
-from nav_msgs.msg import Odometry, Path
+from nav_msgs.msg import Path
 import base64
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile
-from sensor_msgs.msg import Image, NavSatFix
+from sensor_msgs.msg import Image
 from std_msgs.msg import String
 
 from corridor_msgs.action import Patrol
-from corridor_msgs.msg import GeofenceEvent
+from corridor_msgs.msg import FleetState, GeofenceEvent
 from corridor_nav.geofence import LocalFrame, load_geojson_polygon, signed_distance
 from corridor_planner.camera import image_to_png
 from corridor_planner.planner import PLANNING_MODEL, Planner
@@ -82,11 +82,9 @@ def start_xy(frame, fix):
 class Vehicle:
     def __init__(self):
         self.fix = None
-        self.odom = None
         self.image = None
-        self.status = 'unknown'
+        self.state = None      # the vehicle's last corridor_msgs/VehicleState from /fleet/state
         self.goal = None       # ClientGoalHandle of the active patrol
-        self.mode = 'idle'
 
 
 class MissionPlanner(Node):
@@ -109,15 +107,10 @@ class MissionPlanner(Node):
         self.patrol_clients = {}
         for v in self.get_parameter('vehicles').value:
             self.vehicles[v] = Vehicle()
-            self.create_subscription(NavSatFix, f'/{v}/fix', lambda m, v=v: setattr(self.vehicles[v], 'fix', m), 10, callback_group=cb)
-            self.create_subscription(Odometry, f'/{v}/odom', lambda m, v=v: setattr(self.vehicles[v], 'odom', m), 10, callback_group=cb)
-            # the follower latches its status (transient local, depth 1): a planner that starts later only
-            # receives the retained sample when it asks for the same durability
-            self.create_subscription(String, f'/{v}/follower/status', lambda m, v=v: setattr(self.vehicles[v], 'status', m.data),
-                                     QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL), callback_group=cb)
             self.create_subscription(Image, f'/{v}/camera/image', lambda m, v=v: setattr(self.vehicles[v], 'image', m), 1, callback_group=cb)
             self.path_pubs[v] = self.create_publisher(Path, f'/{v}/path', 10)
             self.patrol_clients[v] = ActionClient(self, Patrol, f'/{v}/patrol', callback_group=cb)
+        self.create_subscription(FleetState, '/fleet/state', self.on_fleet, 10, callback_group=cb)
         self.events = collections.deque(maxlen=200)
         self.create_subscription(GeofenceEvent, '/fleet/geofence_events', lambda e: self.events.appendleft(e), 20, callback_group=cb)
 
@@ -141,10 +134,20 @@ class MissionPlanner(Node):
         self.get_logger().info(f'mission planner: {list(self.vehicles)} on corridor {self.corridor_id}, '
                                f'model {self.get_parameter("model").value}, dry_run={client is None}')
 
+    def on_fleet(self, msg):
+        for st in msg.vehicles:
+            v = self.vehicles.get(st.name)
+            if v is None:
+                continue
+            v.state = st
+            v.fix = st.fix if st.mode != 'unknown' else None   # unknown: fleet_state has no fresh fix for it
+
     # ----- tools -----------------------------------------------------------------------------
     def _summary(self, name):
         v = self.vehicles[name]
-        d = {'vehicle': name, 'mode': v.mode, 'follower': v.status}
+        d = {'vehicle': name, 'mode': v.state.mode if v.state is not None else 'unknown'}
+        if v.state is not None and v.state.goal_id:
+            d['goal_id'] = v.state.goal_id
         if v.fix is not None:
             d['lat'] = round(v.fix.latitude, 6)
             d['lon'] = round(v.fix.longitude, 6)
@@ -155,8 +158,8 @@ class MissionPlanner(Node):
                 sd = signed_distance(x, y, self.poly)
                 d['inside_corridor'] = sd >= 0
                 d['edge_distance_m'] = round(sd, 1)
-        if v.odom is not None:
-            d['speed_mps'] = round(math.hypot(v.odom.twist.twist.linear.x, v.odom.twist.twist.linear.y), 2)
+        if v.state is not None:
+            d['speed_mps'] = round(math.hypot(v.state.velocity.linear.x, v.state.velocity.linear.y), 2)
         return d
 
     def _check(self, name):
@@ -184,7 +187,6 @@ class MissionPlanner(Node):
         if not handle.accepted:
             return {'accepted': False, 'reason': 'rejected by patrol server'}
         self.vehicles[vehicle].goal = handle
-        self.vehicles[vehicle].mode = 'patrol'
         return {'accepted': True, 'vehicle': vehicle, 'laps': laps, 'clockwise': clockwise}
 
     def t_goto(self, vehicle, lat, lon):
@@ -210,7 +212,6 @@ class MissionPlanner(Node):
             ps.pose.orientation.w = 1.0
             path.poses.append(ps)
         self.path_pubs[vehicle].publish(path)
-        v.mode = 'goto'
         return {'accepted': True, 'vehicle': vehicle, 'x': round(x, 1), 'y': round(y, 1)}
 
     def _cancel_tracked(self, vehicle):
@@ -221,7 +222,6 @@ class MissionPlanner(Node):
         if v.goal is None:
             return
         handle, v.goal = v.goal, None
-        v.mode = 'stopped'   # until the successor sets its own; a rejected successor must not leave 'patrol' with no goal
         status = stop_goal(handle, STOP_TIMEOUT_S)
         if status != 'finished':
             self.get_logger().warn(f'{vehicle}: patrol goal not finished {STOP_TIMEOUT_S} s after cancel ({status})')
@@ -242,7 +242,6 @@ class MissionPlanner(Node):
                 self.get_logger().warn(f'{vehicle}: patrol goal not finished {STOP_TIMEOUT_S} s after cancel ({status})')
         else:
             stop_follower()
-        v.mode = 'stopped'
         return {'stopped': True, 'vehicle': vehicle, 'cancelled_patrol': cancelled, 'finished': finished}
 
     def t_events(self, limit):
@@ -258,8 +257,9 @@ class MissionPlanner(Node):
         if img is None:
             raise RuntimeError(f'no camera frame from {vehicle} yet')
         png, w, h = image_to_png(img, max_width=320)
-        # Age against the vehicle's own clock (odom stamp), so sim time and wall time are never mixed.
-        ref = self.vehicles[vehicle].odom.header.stamp if self.vehicles[vehicle].odom is not None else img.header.stamp
+        # Age against the vehicle's own clock (the fleet state's stamp), so sim time and wall time are never mixed.
+        st = self.vehicles[vehicle].state
+        ref = st.header.stamp if st is not None else img.header.stamp
         age = max(0.0, (ref.sec - img.header.stamp.sec) + (ref.nanosec - img.header.stamp.nanosec) * 1e-9)
         return {'vehicle': vehicle, 'width': w, 'height': h, 'frame_age_s': round(age, 2), 'png_bytes': len(png),
                 '_content': [{'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/png',

@@ -60,21 +60,21 @@ def until(predicate, timeout=2.0, step=0.01):
 
 # ----- stubs, installed when ROS is absent; foxglove_msgs alone wherever that package is missing -----
 
-def message(name, **fields):
+def message(cls_name, **fields):
     """A message class with ROS-like defaults: nested messages constructed, numbers 0, strings empty."""
     def __init__(self, **kw):
         for f, factory in fields.items():
             setattr(self, f, kw.pop(f) if f in kw else factory())
         if kw:
-            raise TypeError(f'{name}: unknown fields {list(kw)}')
+            raise TypeError(f'{cls_name}: unknown fields {list(kw)}')
 
     def __eq__(self, other):
         return type(other) is type(self) and vars(self) == vars(other)
 
     def __repr__(self):
-        return f'{name}({", ".join(f"{k}={v!r}" for k, v in vars(self).items())})'
+        return f'{cls_name}({", ".join(f"{k}={v!r}" for k, v in vars(self).items())})'
 
-    return type(name, (), {'__init__': __init__, '__eq__': __eq__, '__repr__': __repr__, '__hash__': None})
+    return type(cls_name, (), {'__init__': __init__, '__eq__': __eq__, '__repr__': __repr__, '__hash__': None})
 
 
 class FakeTime:
@@ -234,6 +234,15 @@ NavSatFix = message('NavSatFix', header=Header, status=NavSatStatus, latitude=fl
 Imu = message('Imu', header=Header, orientation=Quaternion, angular_velocity=Vector3, linear_acceleration=Vector3)
 GeofenceEvent = message('GeofenceEvent', header=Header, vehicle=str, corridor_id=str, type=int, distance_m=float, fix=NavSatFix)
 GeofenceEvent.EXIT, GeofenceEvent.ENTER, GeofenceEvent.WARN = 0, 1, 2
+VehicleState = message('VehicleState', header=Header, name=str, fix=NavSatFix, pose=Pose, velocity=Twist,
+                       battery_pct=float, mode=str, goal_id=str, inside_corridor=bool)
+FleetState = message('FleetState', header=Header, corridor_id=str, vehicles=list)
+UUID = message('UUID', uuid=lambda: bytes(16))
+GoalInfo = message('GoalInfo', goal_id=UUID, stamp=Time)
+GoalStatus = message('GoalStatus', goal_info=GoalInfo, status=int)
+(GoalStatus.STATUS_UNKNOWN, GoalStatus.STATUS_ACCEPTED, GoalStatus.STATUS_EXECUTING, GoalStatus.STATUS_CANCELING,
+ GoalStatus.STATUS_SUCCEEDED, GoalStatus.STATUS_CANCELED, GoalStatus.STATUS_ABORTED) = range(7)
+GoalStatusArray = message('GoalStatusArray', status_list=list)
 ColorRGBA = message('ColorRGBA', r=float, g=float, b=float, a=float)
 Marker = message('Marker', header=Header, ns=str, id=int, type=int, points=list, scale=Vector3, color=ColorRGBA)
 Marker.ARROW, Marker.LINE_STRIP = 0, 4
@@ -276,7 +285,9 @@ def install_stubs():
     module('sensor_msgs').msg = module('sensor_msgs.msg', Imu=Imu, NavSatFix=NavSatFix, NavSatStatus=NavSatStatus)
     module('builtin_interfaces').msg = module('builtin_interfaces.msg', Time=Time)
     corridor_msgs = module('corridor_msgs')
-    corridor_msgs.msg = module('corridor_msgs.msg', GeofenceEvent=GeofenceEvent)
+    corridor_msgs.msg = module('corridor_msgs.msg', GeofenceEvent=GeofenceEvent, FleetState=FleetState, VehicleState=VehicleState)
+    module('action_msgs').msg = module('action_msgs.msg', GoalStatus=GoalStatus, GoalStatusArray=GoalStatusArray, GoalInfo=GoalInfo)
+    module('unique_identifier_msgs').msg = module('unique_identifier_msgs.msg', UUID=UUID)
     corridor_msgs.action = module('corridor_msgs.action', Patrol=Patrol)
 
 
