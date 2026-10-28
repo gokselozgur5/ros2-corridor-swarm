@@ -12,6 +12,7 @@ import time
 import rclpy
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import String
 
@@ -36,7 +37,8 @@ class StatusLoop(Node):
             # odom gives speed only: its position starts at the spawn and drifts, the fleet is positioned by fix (#19)
             self.create_subscription(Odometry, f'/{v}/odom', lambda m, v=v: self.state[v].update(
                 speed=round(math.hypot(m.twist.twist.linear.x, m.twist.twist.linear.y), 2)), 10)
-            self.create_subscription(String, f'/{v}/follower/status', lambda m, v=v: self.state[v].update(follower=m.data), 10)
+            self.create_subscription(String, f'/{v}/follower/status', lambda m, v=v: self.state[v].update(follower=m.data),
+                                     QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))  # latched by the follower
         self.create_subscription(GeofenceEvent, '/fleet/geofence_events',
                                  lambda e: self.events.append({'vehicle': e.vehicle, 'type': int(e.type), 'd': round(e.distance_m, 1)}), 10)
         self.summary_pub = self.create_publisher(String, '/mission/summary', 10)

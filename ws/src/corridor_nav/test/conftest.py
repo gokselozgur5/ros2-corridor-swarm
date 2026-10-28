@@ -58,7 +58,7 @@ def until(predicate, timeout=2.0, step=0.01):
     return value
 
 
-# ----- stubs, installed only when ROS is absent -------------------------------------------------
+# ----- stubs, installed when ROS is absent; foxglove_msgs alone wherever that package is missing -----
 
 def message(name, **fields):
     """A message class with ROS-like defaults: nested messages constructed, numbers 0, strings empty."""
@@ -234,6 +234,11 @@ NavSatFix = message('NavSatFix', header=Header, status=NavSatStatus, latitude=fl
 Imu = message('Imu', header=Header, orientation=Quaternion, angular_velocity=Vector3, linear_acceleration=Vector3)
 GeofenceEvent = message('GeofenceEvent', header=Header, vehicle=str, corridor_id=str, type=int, distance_m=float, fix=NavSatFix)
 GeofenceEvent.EXIT, GeofenceEvent.ENTER, GeofenceEvent.WARN = 0, 1, 2
+ColorRGBA = message('ColorRGBA', r=float, g=float, b=float, a=float)
+Marker = message('Marker', header=Header, ns=str, id=int, type=int, points=list, scale=Vector3, color=ColorRGBA)
+Marker.ARROW, Marker.LINE_STRIP = 0, 4
+MarkerArray = message('MarkerArray', markers=list)
+GeoJSON = message('GeoJSON', geojson=str)
 
 
 class Patrol:
@@ -242,14 +247,15 @@ class Patrol:
     Feedback = message('Patrol_Feedback', lap=int, lap_progress=float, distance_m=float, next_waypoint=Point)
 
 
-def install_stubs():
-    def module(name, **attrs):
-        mod = types.ModuleType(name)
-        mod.__dict__.update(attrs)
-        mod.__stub__ = True
-        sys.modules[name] = mod
-        return mod
+def module(name, **attrs):
+    mod = types.ModuleType(name)
+    mod.__dict__.update(attrs)
+    mod.__stub__ = True
+    sys.modules[name] = mod
+    return mod
 
+
+def install_stubs():
     def noop(*args, **kw):
         return None
 
@@ -264,7 +270,9 @@ def install_stubs():
     module('geometry_msgs').msg = module('geometry_msgs.msg', Point=Point, Pose=Pose, PoseStamped=PoseStamped,
                                          Quaternion=Quaternion, Twist=Twist, Vector3=Vector3)
     module('nav_msgs').msg = module('nav_msgs.msg', Odometry=Odometry, Path=Path)
-    module('std_msgs').msg = module('std_msgs.msg', Header=Header, String=String, Float32=Float32)
+    module('std_msgs').msg = module('std_msgs.msg', Header=Header, String=String, Float32=Float32, ColorRGBA=ColorRGBA)
+    module('visualization_msgs').msg = module('visualization_msgs.msg', Marker=Marker, MarkerArray=MarkerArray)
+    module('foxglove_msgs').msg = module('foxglove_msgs.msg', GeoJSON=GeoJSON)
     module('sensor_msgs').msg = module('sensor_msgs.msg', Imu=Imu, NavSatFix=NavSatFix, NavSatStatus=NavSatStatus)
     module('builtin_interfaces').msg = module('builtin_interfaces.msg', Time=Time)
     corridor_msgs = module('corridor_msgs')
@@ -274,6 +282,14 @@ def install_stubs():
 
 if not ROS:
     install_stubs()
+else:
+    try:
+        import foxglove_msgs.msg  # noqa: F401
+    except ImportError:
+        # Thor has rclpy but not ros-jazzy-foxglove-msgs; map_overlay imports it at module level and the
+        # launch_testing plugin turns one module's import error into an error for the whole directory.
+        # GeoJSON is an envelope with one string field; the stand-in keeps map_overlay's tests running.
+        module('foxglove_msgs').msg = module('foxglove_msgs.msg', GeoJSON=GeoJSON)
 
 
 @pytest.fixture

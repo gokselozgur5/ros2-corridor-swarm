@@ -2,10 +2,12 @@
 stand-ins in conftest.py, and against the real message classes on Thor."""
 import math
 import pathlib
+import threading
 import time
 
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
+from std_msgs.msg import String
 
 from corridor_nav.geofence import LocalFrame, load_geojson_polygon
 from corridor_planner import mission_planner as mp
@@ -230,3 +232,18 @@ def test_a_rejected_successor_does_not_leave_the_vehicle_reported_as_patrolling(
     out = node.t_patrol('v1', 0, False)
     assert out['accepted'] is False
     assert v.goal is None and v.mode == 'stopped', (v.goal, v.mode)
+
+
+# ----- busy_marker (Aether's review, 2026-10-28) --------------------------------------------------------
+
+def test_busy_reply_names_the_request_it_dropped():
+    """cot_bridge matches this reply to the marker it sent and lets ATAK's re-send through; a bare 'busy'
+    left that placement suppressed until the marker moved."""
+    log = []
+    node = planner(log)
+    node.busy = threading.Lock()
+    node.busy.acquire()
+    node.reply_pub = FakePublisher(log, name='reply')
+    node.on_request(String(data='send the nearest vehicle to marker RALLY at 52.701000, -2.998500'))
+    assert [m.data for m in node.reply_pub.published] == [
+        'busy with the previous request, dropped: send the nearest vehicle to marker RALLY at 52.701000, -2.998500']

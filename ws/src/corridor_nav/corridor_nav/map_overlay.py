@@ -1,6 +1,7 @@
 """What the Foxglove map cannot draw from raw fixes: the corridor polygon, each vehicle's patrol route,
-and a heading line per vehicle. Published as foxglove_msgs/GeoJSON on /map/overlay (Map panel) and as
-visualization_msgs/MarkerArray on /map/markers (3D panel), both at 2 Hz."""
+and a heading line per vehicle drawn from the fix position (#19: odom x/y start at the spawn and drift).
+Published as foxglove_msgs/GeoJSON on /map/overlay (Map panel) and as visualization_msgs/MarkerArray on
+/map/markers (3D panel), both at 2 Hz."""
 import json
 import math
 
@@ -42,8 +43,7 @@ class MapOverlay(Node):
 
     def on_odom(self, v, m):
         q = m.pose.pose.orientation
-        self.pose.setdefault(v, {}).update(x=m.pose.pose.position.x, y=m.pose.pose.position.y,
-                                           yaw=math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z)))
+        self.pose.setdefault(v, {}).update(yaw=math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z)))
 
     def lonlat(self, x, y):
         lat, lon = self.frame.to_latlon(x, y)
@@ -63,7 +63,8 @@ class MapOverlay(Node):
             p = self.pose.get(v, {})
             if 'yaw' in p and 'lat' in p:
                 length = self.get_parameter('heading_len_m').value
-                tip = (p['x'] + length * math.cos(p['yaw']), p['y'] + length * math.sin(p['yaw']))
+                x, y = self.frame.to_xy(p['lat'], p['lon'])     # where the fix says the vehicle is, in map metres
+                tip = (x + length * math.cos(p['yaw']), y + length * math.sin(p['yaw']))
                 features.append({'type': 'Feature', 'properties': {'name': f'{v} heading', 'style': {'color': hexc, 'weight': 4}},
                                  'geometry': {'type': 'LineString', 'coordinates': [[p['lon'], p['lat']], self.lonlat(*tip)]}})
                 features.append({'type': 'Feature', 'properties': {'name': v.upper(), 'style': {'color': hexc, 'radius': 6, 'fillOpacity': 0.9}},
@@ -74,7 +75,7 @@ class MapOverlay(Node):
                 arrow.ns = f'{v}_heading'
                 arrow.id = 20 + i
                 arrow.type = Marker.ARROW
-                arrow.points = [Point(x=p['x'], y=p['y'], z=0.5), Point(x=tip[0], y=tip[1], z=0.5)]
+                arrow.points = [Point(x=x, y=y, z=0.5), Point(x=tip[0], y=tip[1], z=0.5)]
                 arrow.scale.x, arrow.scale.y, arrow.scale.z = 0.5, 1.2, 1.0
                 arrow.color = ColorRGBA(r=rgb[0], g=rgb[1], b=rgb[2], a=1.0)
                 markers.markers.append(arrow)

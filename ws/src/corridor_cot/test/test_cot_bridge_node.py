@@ -22,6 +22,7 @@ if os.environ.get('ROS_DOMAIN_ID', '0') == '42':
     pytest.exit('ROS_DOMAIN_ID is the demo domain 42 and these tests publish /v1/fix: run them with ROS_DOMAIN_ID=77', returncode=3)
 
 from sensor_msgs.msg import NavSatFix, NavSatStatus  # noqa: E402
+from std_msgs.msg import String  # noqa: E402
 
 from corridor_cot import cot_bridge  # noqa: E402
 
@@ -32,9 +33,12 @@ class FakeSock:
     def __init__(self, chunks=()):
         self.chunks = list(chunks)
         self.done = threading.Event()
+        self.entered = threading.Event()   # the reader thread is inside recv
+        self.closed = False
         self.sent = []
 
     def recv(self, n):
+        self.entered.set()
         if self.chunks:
             return self.chunks.pop(0)
         self.done.wait()
@@ -42,6 +46,19 @@ class FakeSock:
 
     def sendall(self, data):
         self.sent.append(data.decode())
+
+    def shutdown(self, how):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+class BrokenSock(FakeSock):
+    """A connection the server has dropped: reads block, writes fail."""
+
+    def sendall(self, data):
+        raise OSError('connection reset by peer')
 
 
 class Recorder:
@@ -211,3 +228,55 @@ def test_stale_marker_is_not_a_request(bridge):
     feed(bridge, [marker_xml('atak-old', 52.7010, -2.9985, 'OLD', stale_min=-5), marker_xml('atak-3', 52.7010, -2.9985, 'RALLY3')])
     assert wait_for(lambda: len(bridge.requests.lines) == 1), bridge.log.lines
     assert 'RALLY3' in bridge.requests.lines[0]
+
+
+# ----- cot_generation and busy_marker (Aether's review, 2026-10-28) --------------------------------------
+
+def test_reader_of_a_replaced_connection_leaves_the_new_one_alone(bridge, monkeypatch):
+    """send_pli drops a connection whose write failed and connects again on the next tick, while the reader
+    thread may still be blocked in recv on the old one. When that recv finally ends, only the old connection
+    may be forgotten: the replacement, which has already registered with the server, stays."""
+    old = BrokenSock()
+    bridge.fakes.append(old)
+    with bridge.lock:
+        bridge.sock = old
+    assert old.entered.wait(3.0), 'reader did not start reading the old connection'
+    bridge.state['v1'].update(lat=52.7, lon=-3.0, t=bridge.now_s())
+    bridge.send_pli()                                   # the write fails: connection dropped
+    assert bridge.sock is None
+    new = FakeSock()
+    bridge.fakes.append(new)
+    monkeypatch.setattr(bridge, 'connect', lambda: new)
+    bridge.send_pli()                                   # reconnected and registered
+    assert bridge.sock is new and len(new.sent) == 1
+    old.done.set()                                      # the server side of the old connection closes now
+    assert new.entered.wait(3.0), 'reader did not move on to the new connection'
+    assert bridge.sock is new, 'the reader cleared the replacement connection on the old one\'s EOF'
+    assert old.closed, 'the dropped connection was not closed'
+
+
+def test_a_marker_the_planner_rejected_as_busy_is_requested_again_when_re_sent(bridge):
+    """mission_planner answers 'busy with the previous request, dropped: <request>' while a plan runs. The
+    gate then forgets that placement, so ATAK's re-send of the same marker becomes a new request instead
+    of a dropped refresh."""
+    xml = marker_xml('operator-1', 52.701, -2.9985, 'RALLY')
+    feed(bridge, [xml])
+    assert wait_for(lambda: len(bridge.requests.lines) == 1)
+    text = bridge.requests.lines[0]
+    helper = rclpy.create_node('fake_planner_reply')
+    pub = helper.create_publisher(String, '/mission/reply', 10)
+    try:
+        deadline = time.monotonic() + 5.0
+        while 'operator-1' in bridge.gate.sent and time.monotonic() < deadline:
+            pub.publish(String(data=f'busy with the previous request, dropped: {text}'))
+            rclpy.spin_once(bridge, timeout_sec=0.1)
+    finally:
+        helper.destroy_node()
+    bridge.on_event(xml.decode())                       # ATAK re-sends the identical marker
+    assert bridge.requests.lines == [text, text], bridge.requests.lines
+
+
+def test_discard_tolerates_a_connection_without_shutdown_or_close():
+    """A connection stand-in that only reads and writes is forgotten without an error."""
+    cot_bridge._discard(object())
+    cot_bridge._discard(None)
