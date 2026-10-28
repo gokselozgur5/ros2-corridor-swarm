@@ -198,3 +198,78 @@ Verified by: NOT VERIFIED.
 
 Sources: ws/src/corridor_msgs/{CMakeLists.txt,action/Patrol.action,msg/GeofenceEvent.msg,msg/VehicleState.msg,msg/FleetState.msg}; ws/src/corridor_nav/corridor_nav/{geofence.py,patrol_server.py,geofence_monitor.py,waypoint_follower.py}; ws/src/corridor_nav/launch/kinematic.launch.py; ws/src/corridor_nav/test/{test_geofence.py,test_patrol_route.py,test_patrol_server.py,test_patrol_server_node.py}; ws/src/corridor_gz/launch/sim.launch.py; ws/src/corridor_sim/corridor_sim/unicycle_sim.py; ws/src/corridor_planner/corridor_planner/mission_planner.py; steps/08_proofs.sh; steps/12_gazebo_patrol.sh; PLAN.md:35-44; ARCHITECTURE.md:100; git HEAD 60633c8.
 
+## planner
+
+Package `ws/src/corridor_planner` (nodes `mission_planner`, `status_loop`; model side `planner.py`; schemas `tools.py`). Launch: `launch/mission.launch.py`. Line refs are to files under `ws/src/corridor_planner/` (`corridor_planner/*.py`, `test/*.py`, `launch/*.py`).
+
+REQ-PLANNER-01 (Ubiquitous): The mission_planner shall offer the model exactly the tools `list_vehicles`, `get_vehicle`, `patrol`, `goto`, `stop`, `geofence_events`, `describe_scene`, each with a strict JSON input schema (`strict: True`, `additionalProperties: False`) (`tools.py:3-29`, `mission_planner.py:122-124,128`).
+Verified by: `test/test_planner.py::test_request_shape_has_fallbacks_and_no_cmd_vel_tool` asserts only that no tool name/description contains `cmd_vel` (`test_planner.py:93`); the exact tool set is NOT VERIFIED by a unit test. `steps/08_proofs.sh` #12 (lines 91-97) and `steps/10_scene_proof.sh:16-20` exercise `patrol`, `list_vehicles`, `describe_scene` over the debug topic.
+
+REQ-PLANNER-02 (Ubiquitous): The mission_planner shall never publish `cmd_vel`; it shall act only through `Patrol` action goals (`patrol`), a two-pose `/vN/path` (`goto`), and goal cancel plus an empty Path (`stop`) (`mission_planner.py:5,110-111,164-237`; ARCHITECTURE.md:67).
+Verified by: `test/test_planner.py::test_request_shape_has_fallbacks_and_no_cmd_vel_tool` (no cmd_vel tool offered); no test asserts the absence of a `cmd_vel` publisher on the node. Note: ARCHITECTURE.md:101 (open item 4) records that `goto` publishing a Path violates the "only action goals" rule.
+
+REQ-PLANNER-03 (Ubiquitous): The Planner shall call `client.beta.messages.create` with model `claude-opus-5-5` (node parameter `model`, default `PLANNING_MODEL`), `fallbacks='default'`, beta `server-side-fallback-2026-07-01`, `max_tokens=4096` and `output_config={'effort': <effort>}` from the node parameter `effort` (default `medium`) (`planner.py:12-13,39-40,46-56`; `mission_planner.py:91-92,128-129`).
+Verified by: `test/test_planner.py::test_request_shape_has_fallbacks_and_no_cmd_vel_tool` (model, fallbacks, betas; not max_tokens or effort).
+
+REQ-PLANNER-04 (Event-driven): When a `std_msgs/String` arrives on `/mission/request`, the mission_planner shall run `Planner.run` on a daemon worker thread and publish the outcome text on `/mission/reply` (with `dry_run:=true` it replies `dry run, no model: <text>` without a model call) (`mission_planner.py:93,115,118,275-302,306-308`).
+Verified by: `steps/11_live_model_proof.sh:21-30` (#12/#13, model path, needs ANTHROPIC_API_KEY); no unit test of `on_request`/`handle_request`.
+
+REQ-PLANNER-05 (State-driven): While a previous request is still being handled, the mission_planner shall reply `busy with the previous request` on `/mission/reply` and not start a second model run (`mission_planner.py:131,276-278,303-304`).
+Verified by: NOT VERIFIED.
+
+REQ-PLANNER-06 (Ubiquitous): The Planner shall check `stop_reason` before reading `content` on every response (`planner.py:106-118`).
+Verified by: `test/test_planner.py::test_refusal_is_an_outcome_not_an_exception` (refusal response with `content=[]` handled).
+
+REQ-PLANNER-07 (Unwanted behaviour): If a response has `stop_reason == 'refusal'`, then the Planner shall return an `Outcome` with `refused=True` and `category` from `stop_details.category`, append a `refusal` trace event, drop the whole exchange from history, and raise no exception (`planner.py:106-112`).
+Verified by: `test/test_planner.py::test_refusal_is_an_outcome_not_an_exception`, `test_refusal_mid_tool_loop_rolls_back_the_whole_exchange`.
+
+REQ-PLANNER-08 (Unwanted behaviour): If the outcome is refused, then the mission_planner shall publish a `DiagnosticStatus` WARN named `mission_planner` with message `refusal: <category|uncategorised>` on `/diagnostics` and reply `the model declined this request (<category|no category>)` (`mission_planner.py:117,294-296,310-317`).
+Verified by: NOT VERIFIED (PLAN.md:51 asks for this proof; only the model-side half in `test_planner.py` exists, the diagnostic publish is untested).
+
+REQ-PLANNER-09 (Unwanted behaviour): If the SDK raises during `messages.create` or while answering tool calls, then the Planner shall return an `Outcome` with `error` set, append an `error` trace event, drop the exchange so no `tool_use` is left unanswered, and keep the node alive; the node shall publish a DiagnosticStatus ERROR and reply `planner error: ...` (`planner.py:95-101,125-131`; `mission_planner.py:297-299`).
+Verified by: `test/test_planner.py::test_sdk_error_keeps_node_alive`, `test_sdk_error_mid_tool_loop_rolls_back_the_whole_exchange`, `test_rollback_keeps_the_earlier_exchanges`, `test_a_tool_result_that_breaks_the_trace_rolls_back_the_exchange`; diagnostic publish NOT VERIFIED.
+
+REQ-PLANNER-10 (Unwanted behaviour): If a tool callable raises or the model names an unknown tool, then the Planner shall return a `tool_result` with `is_error=True` and an `{'error': ...}` payload instead of aborting the exchange (`planner.py:69-76`).
+Verified by: `test/test_planner.py::test_tool_exception_becomes_error_result` (raising tool only; the unknown-tool branch at `planner.py:70-71` is untested).
+
+REQ-PLANNER-11 (Ubiquitous): The Planner shall stop the tool loop after `max_turns` (12) model turns and report `error='max_turns reached'` (`planner.py:41,93,133-134`).
+Verified by: NOT VERIFIED.
+
+REQ-PLANNER-12 (Event-driven): When a request completes, the mission_planner shall publish every new trace event (`request`, `tool`, `reply`, `refusal`, `error`) as one JSON `std_msgs/String` per event on `/mission/llm_trace`, with tool events carrying `name`, `input`, `result` summary and `is_error` (`planner.py:84,92,99,110,119,129,134`; `mission_planner.py:116,290-293`).
+Verified by: `test/test_planner.py::test_refusal_is_an_outcome_not_an_exception`, `test_max_tokens_with_tool_use_blocks_keeps_no_unanswered_tool_use`, `test_rich_tool_content_passes_blocks_and_trims_trace` (trace list contents); `steps/08_proofs.sh` #12, `steps/10_scene_proof.sh`, `steps/11_live_model_proof.sh` (topic). Trace is published after the run, not per call.
+
+REQ-PLANNER-13 (Event-driven): When a JSON `{"name","input"}` arrives on `/mission/tool_call`, the mission_planner shall run that tool without the model and publish its result on `/mission/llm_trace` as a `tool` event with `source: "debug"` (`mission_planner.py:119-120,261-273`).
+Verified by: `steps/08_proofs.sh:91-97` (#12, asserts `"accepted": true` and `"mode": "patrol"` in the trace), `steps/10_scene_proof.sh:16-20` (asserts `content_blocks ["image", "text"]`).
+
+REQ-PLANNER-14 (Ubiquitous): The Planner shall accumulate `usage.input_tokens`/`output_tokens` per request into the `Outcome`, and the mission_planner shall put `tool_calls`, `turns`, `input_tokens`, `output_tokens` as KeyValues on every `/diagnostics` status (`planner.py:102-105`; `mission_planner.py:310-317`).
+Verified by: `test/test_planner.py::test_tool_loop_executes_and_feeds_back` asserts `tool_calls` and `turns` only; token sums and the diagnostic KeyValues are NOT VERIFIED.
+
+REQ-PLANNER-15 (Event-driven): When `describe_scene(vehicle)` is called, the mission_planner shall convert the latest `/vN/camera/image` (rgb8/bgr8) to a PNG downscaled by the integer factor `max(1, width // 320)` and return it as a base64 image block plus a text block, with the trace showing only the block types (`camera.py:6-24`; `mission_planner.py:109,246-258`; `planner.py:77-81`).
+Verified by: `test/test_planner.py::test_rich_tool_content_passes_blocks_and_trims_trace`; `steps/10_scene_proof.sh` (debug path); `steps/11_live_model_proof.sh:21-25` (#13, model path). `image_to_png` itself has no unit test.
+
+REQ-PLANNER-16 (Unwanted behaviour): If `goto` targets a point outside the corridor polygon or the vehicle has no fix, then the mission_planner shall return `accepted: False` with a reason and cancel nothing (`mission_planner.py:186-191`).
+Verified by: `test/test_mission_tools.py::test_goto_outside_the_corridor_is_refused_before_anything_is_stopped`, `test_goto_without_a_fix_is_refused_and_cancels_nothing`.
+
+REQ-PLANNER-17 (Event-driven): When `stop(vehicle)` is called, the mission_planner shall publish an empty Path as soon as the cancel is sent, wait at most `STOP_TIMEOUT_S` (3 s) for the old goal to exit, and report `finished` true/false (`mission_planner.py:36,47-65,220-237`).
+Verified by: `test/test_mission_tools.py::test_stop_publishes_the_empty_path_right_after_the_cancel_not_after_the_old_goal_exited`, `test_stop_is_bounded_when_the_server_never_answers`, `test_stop_reports_whether_the_old_goal_finished`; `test/test_mission_planner_node.py::test_stop_returns_after_the_cancelled_goal_has_exited` (needs ROS, on Thor).
+
+REQ-PLANNER-18 (Optional): Where `mission.launch.py` is started with `status_loop:=true`, the status_loop shall every `period_s` (30 s) send one `claude-haiku-5-5` request (`client.messages.create`, `max_tokens=200`, `output_config.effort` low) with the fleet snapshot and publish the text on `/mission/summary` (`status_loop.py:20,29-31,42,52,59-75`; `launch/mission.launch.py:21,28-29`).
+Verified by: `steps/11_live_model_proof.sh:15,31-33` (model path only; the proof greps the `cost:` log line, `/mission/summary` is not read); no unit test of `StatusLoop`. [GAP] ARCHITECTURE.md:64 says both models run with `fallbacks: "default"` under the beta; `status_loop.py:61-64` uses the non-beta `client.messages.create` with no `fallbacks`/`betas`.
+
+REQ-PLANNER-19 (Event-driven): When a status tick returns a non-refused response, the status_loop shall publish `{calls, input_tokens, output_tokens, usd, usd_per_hour}` on `/mission/summary_cost` priced at $0.10/$0.50 per 1M tokens and log `cost: calls=...`; `usage` and `calls` are accumulated for every returned response, refused ones included (`status_loop.py:21,43,68-82`).
+Verified by: `steps/11_live_model_proof.sh:33` greps the log line; line 19 echoes `/mission/summary_cost` to a file that is never read; no assertion on the value.
+
+REQ-PLANNER-20 (Unwanted behaviour): If the status_loop request raises or returns `stop_reason == 'refusal'`, then the status_loop shall log a warning and skip the tick, never crash (`status_loop.py:65-73`).
+Verified by: NOT VERIFIED.
+
+REQ-PLANNER-21 (Ubiquitous) [PLANNED] [GAP]: The README shall record the measured status-loop cost per hour from `usage`, target < $0.20/h (PLAN.md:56-57). README.md contains no cost figure (grep `cost|usd` finds none); PLAN.md:11 says #14 was proven live but the number was not written down.
+Verified by: NOT VERIFIED.
+
+REQ-PLANNER-22 (Ubiquitous) [GAP]: The mission_planner's `list_vehicles` shall read `/fleet/state` (ARCHITECTURE.md:55). Code instead subscribes per vehicle to `/vN/fix`, `/vN/odom`, `/vN/follower/status` and summarises itself (`mission_planner.py:104-111,136-158`); ARCHITECTURE.md:100 lists this as open item 3; no node under `ws/src/corridor_*` publishes `/fleet/state` (grep).
+Verified by: NOT VERIFIED.
+
+REQ-PLANNER-23 (Unwanted behaviour): If a response ends with `stop_reason != 'tool_use'` but still contains `tool_use` blocks (e.g. cut by `max_tokens`), then the Planner shall not run those tools, append a `reply` trace event with that `stop_reason`, and drop the exchange so no `tool_use` is left unanswered (`planner.py:117-124`).
+Verified by: `test/test_planner.py::test_max_tokens_with_tool_use_blocks_keeps_no_unanswered_tool_use`.
+
+Sources: `ws/src/corridor_planner/corridor_planner/planner.py`, `mission_planner.py`, `status_loop.py`, `camera.py`, `tools.py`; `ws/src/corridor_planner/launch/mission.launch.py`; `ws/src/corridor_planner/test/test_planner.py`, `test_mission_tools.py`, `test_mission_planner_node.py`; `steps/08_proofs.sh`, `steps/10_scene_proof.sh`, `steps/11_live_model_proof.sh`; ARCHITECTURE.md:49-67,100-101; PLAN.md:9-11,48-57; README.md (grep `cost|usd`: no match); git HEAD 60633c8.
+
