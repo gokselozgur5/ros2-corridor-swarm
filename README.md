@@ -8,22 +8,31 @@ Vehicles patrol a mission corridor (the KML/GeoJSON polygon from map-writer), st
 
 ## Environment
 
-ROS 2 Jazzy is a source build at `~/.goske/ros2_jazzy` on Thor. `. ./env.sh` sources it, the workspace overlay and sets `ROS_DOMAIN_ID=42`.
+`. ./env.sh` sources ROS 2 Jazzy (the source build at `~/.goske/ros2_jazzy` if present, else apt's `/opt/ros/jazzy`), then the overlay `ws/install` once built, defaults `ROS_DOMAIN_ID` to 42 and exports `./.env` if there is one. A source Jazzy has no `/opt/ros`, so everything the stack needs beyond it comes from `ws/deps.repos`, built into the overlay by the steps below. 06, 07, 09 and 15 `cd` to `~/deletdis/ros2-corridor-swarm` (the clone on Thor), source `env.sh` and repeat the import themselves; logs go to `~/deletdis/log/`.
 
 ```bash
-vcs import ws/src < ws/deps.repos          # foxglove_bridge 0.8.5, rosx_introspection
-rosdep install --from-paths ws/src --ignore-src -y --simulate   # must list no ros-jazzy-* package
-cd ws && colcon build --symlink-install --packages-up-to foxglove_bridge corridor_sim --cmake-args -DBUILD_TESTING=OFF
+. ./env.sh
+vcs import ws/src < ws/deps.repos   # 44 repos: foxglove_bridge 0.8.5, rosx_introspection, foxglove-sdk (3); ros_gz with 17 gz vendors and 5 message repos (23); xacro (1); ros2_control, ros2_controllers, gz_ros2_control and 14 they pull in (17)
+./steps/05_gz_install.sh            # Gazebo Harmonic from the OSRF apt repo; not a ROS package, nothing lands in /opt/ros
+./steps/06_ros_gz_build.sh          # ros_gz_bridge and ros_gz_sim with the gz vendors on top of Harmonic (GZ_VERSION=harmonic); apt libcli11-dev libgflags-dev libdart6.13-all-dev
+./steps/09_ros2_control_build.sh    # gz_ros2_control, diff_drive_controller, joint_state_broadcaster; the other controllers get COLCON_IGNORE, tl-expected is built first; apt python3-typeguard python3-jinja2
+./steps/15_foxglove_msgs.sh         # before 07: COLCON_IGNORE on the sdk checkout (its ros/src holds a second foxglove_bridge, and colcon stops on a duplicate name once a build selects it, as 07 does through corridor_sim), then foxglove_msgs out of ros/src/foxglove_msgs alone
+./steps/07_build_ours.sh            # xacro, foxglove_bridge and our packages except corridor_cot; pip anthropic brotli zstandard for the user
+cd ws && colcon build --symlink-install --packages-select corridor_cot --cmake-args -DBUILD_TESTING=OFF   # the one 07 leaves out
 ```
 
-Run: `ros2 launch corridor_sim day1.launch.py`. Mac: Foxglove app, Open connection, `ws://$THOR_HOST:8765`; a Map panel on `/vehicle/fix`.
+On a Thor with Jazzy from apt (`/opt/ros/jazzy`), ros_gz, gz_ros2_control, the controllers and foxglove_bridge come from apt as well (`ros-jazzy-*`; `foxglove_msgs` is `ros-jazzy-foxglove-msgs`); nothing is imported from `ws/deps.repos` and the seven `corridor_*` packages build alone: `cd ws && colcon build --symlink-install --cmake-args -DBUILD_TESTING=OFF`.
+
+Run: `ros2 launch corridor_nav kinematic.launch.py n:=3` (unicycles, no Gazebo), then a lap: `ros2 action send_goal /v1/patrol corridor_msgs/action/Patrol "{vehicle: v1, corridor_id: demo, laps: 1, speed_mps: 0.0, clockwise: false}"`. Physics instead: `ros2 launch corridor_gz sim.launch.py use_ros2_control:=true` (`steps/12_gazebo_patrol.sh` drives the lap there). Mission layer on top of the kinematic launch: `ros2 launch corridor_planner mission.launch.py start_patrol:=false` (`dry_run:=true` without `ANTHROPIC_API_KEY`). Mac: Foxglove, Open connection, `ws://$THOR_HOST:8765`, Layout, Import from file, `foxglove/corridor.json`.
+
+`env.sh` keeps a `ROS_DOMAIN_ID` already set, so `export ROS_DOMAIN_ID=77` before sourcing moves everything off the demo domain 42; the node tests refuse 42. Thor is shared with another ROS 2 and Gazebo stack on 42, so ours runs there on 77 with `GZ_PARTITION=corridor` exported the same way.
 
 Why these choices:
 
-- `ros-foxglove-bridge` main is ROS 1 only now; 0.8.5 is the newest tag with `ros2_foxglove_bridge`. The ROS 2 bridge in foxglove-sdk needs a Rust toolchain.
-- `BUILD_TESTING=OFF`: the bridge's smoke test is compiled as C++20 and websocketpp 0.8.2 does not parse under it.
-- `rosx_introspection` is cloned because rosdep would otherwise install `ros-jazzy-rosx-introspection` from apt, which would shadow the source build with `/opt/ros`.
-- apt packages the build needed: `libwebsocketpp-dev nlohmann-json3-dev rapidjson-dev`.
+- `ros-foxglove-bridge` main is ROS 1 only now; 0.8.5 is the newest tag with `ros2_foxglove_bridge`. The ROS 2 bridge moved into foxglove-sdk (`ros/src/foxglove_bridge`): it needed a Rust toolchain when 0.8.5 was picked (ADR-0003), its CMake now fetches a prebuilt C++ SDK, and the pin has not been revisited. Only `foxglove_msgs` is built out of the sdk checkout.
+- `BUILD_TESTING=OFF` on every build: the bridge's smoke test is compiled as C++20 and websocketpp 0.8.2 does not parse under it.
+- No `ros-jazzy-*` apt package next to the source Jazzy: it would create `/opt/ros` and shadow the build (ADR-0002), which is why all 44 repos are built in the overlay. rosdep wanted `ros-jazzy-rosx-introspection` for the bridge on day 1; 06 still prints `rosdep install --simulate` for ros_gz, and it must name none.
+- apt packages the builds need: `libwebsocketpp-dev nlohmann-json3-dev rapidjson-dev` for the bridge (rosdep resolved them on day 1, steps 02b and 02c; no later step installs them) and the ones next to 05, 06 and 09 above. 07 pip-installs `anthropic brotli zstandard` because noble's `python3-brotli` broke the SDK's response decoding.
 
 `steps/` holds the scripts each day was done with; they run inside the `ros2` tmux session (`tmux attach -t ros2`, windows `work` and `run`).
 
