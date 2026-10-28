@@ -2,7 +2,7 @@
 
 A ROS 2 Jazzy project on Jetson Thor, fully simulated: a fleet of ground vehicles with real physics in a Gazebo world, patrolling a mission corridor, reporting to ATAK, taking missions in plain language through a Claude-backed planner.
 
-Architecture: [ARCHITECTURE.md](ARCHITECTURE.md). Plan with a proof per step: [PLAN.md](PLAN.md). Progress: GitHub milestones and issues.
+Architecture: [ARCHITECTURE.md](ARCHITECTURE.md). Decisions: [docs/adr](docs/adr/). Requirements (EARS): [docs/requirements.md](docs/requirements.md). Plan with a proof per step: [PLAN.md](PLAN.md). Progress: GitHub milestones and issues.
 
 Vehicles patrol a mission corridor (the KML/GeoJSON polygon from map-writer), stay inside a geofence, and report to ATAK over CoT. Foxglove on the Mac shows the ROS side.
 
