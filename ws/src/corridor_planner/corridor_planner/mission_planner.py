@@ -161,8 +161,8 @@ class MissionPlanner(Node):
                 sd = signed_distance(x, y, self.poly)
                 d['inside_corridor'] = sd >= 0
                 d['edge_distance_m'] = round(sd, 1)
-        if v.odom is not None:
-            d['speed_mps'] = round(math.hypot(v.odom.twist.twist.linear.x, v.odom.twist.twist.linear.y), 2)
+        if v.state is not None:
+            d['speed_mps'] = round(math.hypot(v.state.velocity.linear.x, v.state.velocity.linear.y), 2)
         return d
 
     def _check(self, name):

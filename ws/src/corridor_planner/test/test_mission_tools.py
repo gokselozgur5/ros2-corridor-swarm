@@ -150,8 +150,8 @@ def test_summary_xy_come_from_the_fix():
     node = planner([])
     v = node.vehicles['v1']
     v.fix = fix_at(node.frame, 20.0, 20.0)
-    v.odom = Odometry()
-    v.odom.twist.twist.linear.x = 1.5
+    v.state = VehicleState(name='v1', mode='idle')
+    v.state.velocity.linear.x = 1.5
     d = node._summary('v1')
     assert (d['x'], d['y']) == (20.0, 20.0), d
     assert d['speed_mps'] == 1.5 and d['inside_corridor'] is True and d['edge_distance_m'] == 20.0
