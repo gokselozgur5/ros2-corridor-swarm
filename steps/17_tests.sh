@@ -7,17 +7,17 @@ cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
 source ./steps/lib.sh
 export REQUIRE_ROS=1 ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
-LOG=~/deletdis/log/16_tests.log; exec > >(tee -a "$LOG") 2>&1
+LOG=~/deletdis/log/17_tests.log; exec > >(tee -a "$LOG") 2>&1
 echo "=== $(date -Is) tests on ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
 if [ "$ROS_DOMAIN_ID" = "42" ]; then
-  echo "ROS_DOMAIN_ID is the demo domain 42 and the node tests publish on live topics: run ROS_DOMAIN_ID=77 ./steps/16_tests.sh"
+  echo "ROS_DOMAIN_ID is the demo domain 42 and the node tests publish on live topics: run ROS_DOMAIN_ID=77 ./steps/17_tests.sh"
   echo "TESTS FAIL"; exit 1
 fi
 fail=0
 lines=()
 run() {   # run <label> <pytest args...>: one pytest run; its output stays in $out for the caller
   local label=$1 rc line; shift
-  out=/tmp/tests16_${label// /_}.txt
+  out=/tmp/tests17_${label// /_}.txt
   echo "--- $label: python3 -m pytest -q -rs -p no:cacheprovider $*"
   python3 -m pytest -q -rs -p no:cacheprovider "$@" 2>&1 | tee "$out"
   rc=${PIPESTATUS[0]}

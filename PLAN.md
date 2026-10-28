@@ -1,6 +1,6 @@
 # Plan
 
-Phases, not days. Each step has a proof: a command whose output decides whether the step is done. A step is not done because the code exists; it is done when the proof passes on Thor from a clean `colcon build`. The unit and node tests of every package are a proof of their own: `steps/16_tests.sh` runs them from that build.
+Phases, not days. Each step has a proof: a command whose output decides whether the step is done. A step is not done because the code exists; it is done when the proof passes on Thor from a clean `colcon build`. The unit and node tests of every package are a proof of their own: `steps/17_tests.sh` runs them from that build.
 
 Tracked on GitHub as milestones (one per phase) and issues (one per step).
 
