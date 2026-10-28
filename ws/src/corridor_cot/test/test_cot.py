@@ -211,3 +211,18 @@ def test_marker_gate_keeps_a_bounded_number_of_unanswered_requests():
     assert len(gate.pending) == 32
     assert gate.dropped(f'busy with the previous request, dropped: {tags[0]} x') is None    # trimmed, 40 later
     assert gate.dropped(f'busy with the previous request, dropped: {tags[-1]} x') == 'm39'
+
+
+def test_a_late_busy_reply_for_an_older_placement_leaves_the_current_one_alone():
+    """Aether, PR #30 review: A -> B -> A gives three requests; the first A's late rejection must not free the
+    current A (same coordinates), or the marker's next unchanged re-send would be asked again."""
+    from corridor_cot.cot import BUSY_REPLY, MarkerGate
+    gate = MarkerGate(move_m=5.0)
+    a = {'uid': 'marker-a', 'callsign': 'RALLY', 'lat': 52.701, 'lon': -2.998}
+    b = dict(a, lat=a['lat'] + 20 / 111320.0)
+    first_a, moved_b, current_a = gate.admit(a), gate.admit(b), gate.admit(a)
+    assert len({first_a, moved_b, current_a}) == 3 and gate.admit(a) is None
+    assert gate.dropped(f'{BUSY_REPLY}, dropped: {first_a} x') is None
+    assert gate.admit(a) is None, 'the current placement stays known'
+    assert gate.dropped(f'{BUSY_REPLY}, dropped: {current_a} x') == 'marker-a'
+    assert gate.admit(a)
