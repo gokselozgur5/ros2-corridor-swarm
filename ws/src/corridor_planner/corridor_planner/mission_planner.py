@@ -251,8 +251,9 @@ class MissionPlanner(Node):
         if img is None:
             raise RuntimeError(f'no camera frame from {vehicle} yet')
         png, w, h = image_to_png(img, max_width=320)
-        # Age against the vehicle's own clock (odom stamp), so sim time and wall time are never mixed.
-        ref = self.vehicles[vehicle].odom.header.stamp if self.vehicles[vehicle].odom is not None else img.header.stamp
+        # Age against the vehicle's own clock (the fleet state's stamp), so sim time and wall time are never mixed.
+        st = self.vehicles[vehicle].state
+        ref = st.header.stamp if st is not None else img.header.stamp
         age = max(0.0, (ref.sec - img.header.stamp.sec) + (ref.nanosec - img.header.stamp.nanosec) * 1e-9)
         return {'vehicle': vehicle, 'width': w, 'height': h, 'frame_age_s': round(age, 2), 'png_bytes': len(png),
                 '_content': [{'type': 'image', 'source': {'type': 'base64', 'media_type': 'image/png',
