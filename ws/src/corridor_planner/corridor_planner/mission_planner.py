@@ -1,9 +1,10 @@
 """ROS side of the mission planner.
 
 /mission/request (std_msgs/String) -> Planner.run -> /mission/reply (String) and /mission/llm_trace
-(String, one JSON object per event). Tools read the vehicles' fix/odom/follower status, send Patrol
-goals, publish a two-pose Path (fix, target) for goto, cancel for stop. The planner never publishes cmd_vel.
-Vehicles are positioned by their fix through the corridor frame, as the follower does; odom is speed only (#19).
+(String, one JSON object per event). Tools read the fleet from /fleet/state (corridor_msgs/FleetState,
+published by corridor_nav's fleet_state, ADR-0015), send Patrol goals, publish a two-pose Path (fix,
+target) for goto, cancel for stop. The planner never publishes cmd_vel. A vehicle's position is its fix
+through the corridor frame, as the follower does (#19); mode and speed are what fleet_state observed.
 Refusals and SDK errors become diagnostics on /diagnostics, not crashes.
 """
 import collections
