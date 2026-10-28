@@ -24,7 +24,7 @@ if os.environ.get('ROS_DOMAIN_ID', '0') == '42':
 from sensor_msgs.msg import NavSatFix, NavSatStatus  # noqa: E402
 from std_msgs.msg import String  # noqa: E402
 
-from corridor_cot import cot_bridge  # noqa: E402
+from corridor_cot import cot, cot_bridge  # noqa: E402
 
 
 class FakeSock:
@@ -273,7 +273,24 @@ def test_a_marker_the_planner_rejected_as_busy_is_requested_again_when_re_sent(b
     finally:
         helper.destroy_node()
     bridge.on_event(xml.decode())                       # ATAK re-sends the identical marker
-    assert bridge.requests.lines == [text, text], bridge.requests.lines
+    again = bridge.requests.lines
+    untagged = [cot.REQUEST_TAG.sub('', r) for r in again]
+    assert len(again) == 2 and again[0] != again[1] and untagged[0] == untagged[1], again
+
+
+def test_two_markers_with_one_callsign_on_one_spot_are_both_asked_again_after_busy_replies(bridge):
+    """Aether r3: both requests read the same, so the gate must forget by the request tag, not by the text."""
+    a, b = marker_xml('marker-a', 52.701, -2.998, 'RALLY'), marker_xml('marker-b', 52.701, -2.998, 'RALLY')
+    bridge.on_event(a.decode())
+    bridge.on_event(b.decode())
+    first = list(bridge.requests.lines)
+    assert [cot.REQUEST_TAG.sub('', r) for r in first] == ['send the nearest vehicle to marker "RALLY" at 52.701000, -2.998000'] * 2, first
+    assert first[0] != first[1], first
+    for text in first:
+        bridge.on_reply(String(data=f'busy with the previous request, dropped: {text}'))
+    bridge.on_event(a.decode())
+    bridge.on_event(b.decode())
+    assert len(bridge.requests.lines) == 4, bridge.requests.lines
 
 
 def test_discard_tolerates_a_connection_without_shutdown_or_close():

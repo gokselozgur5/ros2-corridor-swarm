@@ -9,12 +9,12 @@ request per placement (a uid re-sent at the same spot is a rename or a refresh, 
 marker already stale. Reconnects on any socket error; a (re)connection's first write is a single event, which
 FreeTAKServer takes as the client's registration, and the fleet follows on the next tick. The reader thread
 forgets only the connection it was reading, so a replacement the sender made survives the old one's EOF.
-A request the planner rejected as busy is forgotten by the marker gate, so ATAK's re-send of that marker
-is asked again. Never raises out of a callback."""
+Each request carries a tag ('[req N] ') that mission_planner echoes in its busy reply; the gate forgets the
+placement the tag names, so ATAK's re-send of that marker is asked again (two markers may share one text).
+Never raises out of a callback."""
 import os
 import socket
 import threading
-from collections import OrderedDict
 
 import rclpy
 from nav_msgs.msg import Odometry
@@ -23,8 +23,6 @@ from sensor_msgs.msg import NavSatFix, NavSatStatus
 from std_msgs.msg import String
 
 from corridor_cot.cot import MarkerGate, course_from_quaternion, marker_or_reason, pli_events, request_text
-
-BUSY_REPLY = 'busy with the previous request'   # mission_planner's rejection, followed by ', dropped: <request>'
 
 
 def _discard(sock):
@@ -58,8 +56,7 @@ class CotBridge(Node):
                 speed=abs(m.twist.twist.linear.x)), 10)
         self.request_pub = self.create_publisher(String, '/mission/request', 10)
         self.create_subscription(String, '/mission/reply', self.on_reply, 10)
-        self.pending = OrderedDict()   # request text -> marker uid, for matching the planner's busy reply
-        self.gate_lock = threading.Lock()   # gate and pending: the reader thread admits, the executor forgets
+        self.gate_lock = threading.Lock()   # the reader thread admits, the executor resolves busy replies
         self.sock = None
         self.lock = threading.Lock()
         self.create_timer(self.get_parameter('period_s').value, self.send_pli)
@@ -135,25 +132,20 @@ class CotBridge(Node):
             self.get_logger().warn(f'marker dropped: {reason}')
         if not marker or marker['uid'].startswith('corridor-'):
             return
-        text = request_text(marker)
         with self.gate_lock:
-            if not self.gate.admit(marker):
-                return
-            self.pending[text] = marker['uid']
-            while len(self.pending) > 32:
-                self.pending.popitem(last=False)
+            tag = self.gate.admit(marker)
+        if not tag:
+            return
+        text = f'{tag} {request_text(marker)}'
         self.request_pub.publish(String(data=text))
         self.get_logger().info(f'marker -> request: {text}')
 
     def on_reply(self, msg):
-        """The planner drops a request while a plan runs: forget that placement so the marker's re-send is asked again."""
-        if not msg.data.startswith(BUSY_REPLY):
-            return
+        """mission_planner drops a request while a plan runs and echoes it, tag and all: the gate forgets that
+        placement, so the marker's re-send is asked again."""
         with self.gate_lock:
-            uid = self.pending.pop(msg.data.partition('dropped: ')[2], None)
-            if uid is not None:
-                self.gate.forget(uid)
-        if uid is not None:
+            uid = self.gate.dropped(msg.data)
+        if uid:
             self.get_logger().warn(f'planner busy, marker {uid} will be requested again when ATAK re-sends it')
 
 
