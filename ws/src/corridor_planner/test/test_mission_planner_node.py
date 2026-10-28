@@ -28,7 +28,6 @@ from rclpy.callback_groups import ReentrantCallbackGroup  # noqa: E402
 from rclpy.executors import MultiThreadedExecutor  # noqa: E402
 from rclpy.node import Node  # noqa: E402
 from sensor_msgs.msg import NavSatFix  # noqa: E402
-from std_msgs.msg import String  # noqa: E402
 
 from corridor_msgs.action import Patrol  # noqa: E402
 from corridor_msgs.msg import FleetState, VehicleState  # noqa: E402
