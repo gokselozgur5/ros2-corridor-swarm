@@ -1,6 +1,6 @@
 """Periodic fleet summary on Haiku: every `period_s` one short paragraph on /mission/summary.
 
-Reads the same vehicle topics as mission_planner but calls no tools; a single
+Reads /fleet/state like mission_planner (ADR-0015) but calls no tools; a single
 claude-haiku-5-5 request with the fleet snapshot in the prompt. Usage is accumulated and
 published on /mission/summary_cost (std_msgs/String JSON) so the hourly cost can be measured
 (issue #14). Refusals and SDK errors are logged and skipped, never fatal.
@@ -10,13 +10,10 @@ import math
 import time
 
 import rclpy
-from nav_msgs.msg import Odometry
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile
-from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import String
 
-from corridor_msgs.msg import GeofenceEvent
+from corridor_msgs.msg import FleetState, GeofenceEvent
 
 STATUS_MODEL = 'claude-haiku-5-5'
 
@@ -49,13 +46,7 @@ class StatusLoop(Node):
         self.declare_parameter('model', STATUS_MODEL)
         self.state = {v: {} for v in self.get_parameter('vehicles').value}
         self.events = []
-        for v in self.state:
-            self.create_subscription(NavSatFix, f'/{v}/fix', lambda m, v=v: self.state[v].update(lat=round(m.latitude, 5), lon=round(m.longitude, 5)), 10)
-            # odom gives speed only: its position starts at the spawn and drifts, the fleet is positioned by fix (#19)
-            self.create_subscription(Odometry, f'/{v}/odom', lambda m, v=v: self.state[v].update(
-                speed=round(math.hypot(m.twist.twist.linear.x, m.twist.twist.linear.y), 2)), 10)
-            self.create_subscription(String, f'/{v}/follower/status', lambda m, v=v: self.state[v].update(follower=m.data),
-                                     QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))  # latched by the follower
+        self.create_subscription(FleetState, '/fleet/state', lambda m: self.state.update(fleet_snapshot(m, self.state)), 10)
         self.create_subscription(GeofenceEvent, '/fleet/geofence_events',
                                  lambda e: self.events.append({'vehicle': e.vehicle, 'type': int(e.type), 'd': round(e.distance_m, 1)}), 10)
         self.summary_pub = self.create_publisher(String, '/mission/summary', 10)
