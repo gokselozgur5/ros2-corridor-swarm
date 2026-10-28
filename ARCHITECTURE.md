@@ -82,6 +82,8 @@ External, cloned into `ws/src` via `ws/deps.repos` and built with colcon: `ros_g
 
 ## Decisions
 
+Each one is also an ADR in [docs/adr](docs/adr/); the open questions below are ADR-0015 to ADR-0018, status Proposed.
+
 - **Gazebo, not Isaac Sim.** Isaac needs x86 + RTX; Thor is aarch64. Gazebo Harmonic has arm64 packages for Ubuntu 24.04.
 - **Headless.** `gz sim -s` only. The Mac sees the world through Foxglove's 3D panel from tf and sensor topics. GUI on Thor would steal GPU from the people who share it.
 - **Physics first, Nav2 later.** The point is motors and sensors behaving like hardware; a pure-pursuit follower is 150 lines and keeps the stack buildable.
