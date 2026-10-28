@@ -1,5 +1,6 @@
 """Cursor-on-Target XML, built and parsed without pytak so it is unit-testable and dependency-free."""
 import math
+import re
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
@@ -100,6 +101,29 @@ def parse_marker(xml_text, now=None):
     or expired placement must not dispatch a vehicle); an unreadable stale is taken as no expiry.
     marker_or_reason says why a marker was dropped."""
     return marker_or_reason(xml_text, now)[0]
+
+
+_NOT_LABEL = re.compile(r'[^A-Za-z0-9 _.-]')
+LABEL_MAX = 24
+
+
+def label(marker):
+    """The marker's display name as the planner may see it: the callsign, else the uid, else 'marker', kept to
+    [A-Za-z0-9 _.-], single spaces and at most LABEL_MAX characters. The 8087 stream is unauthenticated and the
+    text ends up in the model's user turn, so whatever someone typed into ATAK is a name to show, never wording
+    to follow; the planner's SYSTEM prompt says the same about the quoted label."""
+    for raw in (marker.get('callsign'), marker.get('uid')):
+        text = ' '.join(_NOT_LABEL.sub('', raw or '').split())[:LABEL_MAX].strip()
+        if text:
+            return text
+    return 'marker'
+
+
+def request_text(marker):
+    """The /mission/request text for a marker. The label is quoted and cannot contain a quote, so the planner
+    can tell the name from the order; mission_planner echoes this text back in its busy reply, so the bridge
+    keys its pending requests on it."""
+    return f'send the nearest vehicle to marker "{label(marker)}" at {marker["lat"]:.6f}, {marker["lon"]:.6f}'
 
 
 def _metres(a, b):
