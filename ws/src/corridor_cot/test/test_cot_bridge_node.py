@@ -32,9 +32,12 @@ class FakeSock:
     def __init__(self, chunks=()):
         self.chunks = list(chunks)
         self.done = threading.Event()
+        self.entered = threading.Event()   # the reader thread is inside recv
+        self.closed = False
         self.sent = []
 
     def recv(self, n):
+        self.entered.set()
         if self.chunks:
             return self.chunks.pop(0)
         self.done.wait()
@@ -42,6 +45,19 @@ class FakeSock:
 
     def sendall(self, data):
         self.sent.append(data.decode())
+
+    def shutdown(self, how):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+class BrokenSock(FakeSock):
+    """A connection the server has dropped: reads block, writes fail."""
+
+    def sendall(self, data):
+        raise OSError('connection reset by peer')
 
 
 class Recorder:
@@ -211,3 +227,28 @@ def test_stale_marker_is_not_a_request(bridge):
     feed(bridge, [marker_xml('atak-old', 52.7010, -2.9985, 'OLD', stale_min=-5), marker_xml('atak-3', 52.7010, -2.9985, 'RALLY3')])
     assert wait_for(lambda: len(bridge.requests.lines) == 1), bridge.log.lines
     assert 'RALLY3' in bridge.requests.lines[0]
+
+
+# ----- cot_generation (Aether's review, 2026-10-28) --------------------------------------------------------
+
+def test_reader_of_a_replaced_connection_leaves_the_new_one_alone(bridge, monkeypatch):
+    """send_pli drops a connection whose write failed and connects again on the next tick, while the reader
+    thread may still be blocked in recv on the old one. When that recv finally ends, only the old connection
+    may be forgotten: the replacement, which has already registered with the server, stays."""
+    old = BrokenSock()
+    bridge.fakes.append(old)
+    with bridge.lock:
+        bridge.sock = old
+    assert old.entered.wait(3.0), 'reader did not start reading the old connection'
+    bridge.state['v1'].update(lat=52.7, lon=-3.0, t=bridge.now_s())
+    bridge.send_pli()                                   # the write fails: connection dropped
+    assert bridge.sock is None
+    new = FakeSock()
+    bridge.fakes.append(new)
+    monkeypatch.setattr(bridge, 'connect', lambda: new)
+    bridge.send_pli()                                   # reconnected and registered
+    assert bridge.sock is new and len(new.sent) == 1
+    old.done.set()                                      # the server side of the old connection closes now
+    assert new.entered.wait(3.0), 'reader did not move on to the new connection'
+    assert bridge.sock is new, 'the reader cleared the replacement connection on the old one\'s EOF'
+    assert old.closed, 'the dropped connection was not closed'

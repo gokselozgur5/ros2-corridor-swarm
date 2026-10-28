@@ -6,8 +6,9 @@ in ATAK. Events from the server that are markers -> std_msgs/String on /mission/
 ("send the nearest vehicle to <callsign> at lat, lon"), so the planner can act on them; one request per
 placement (a uid re-sent at the same spot is a rename or a refresh, not a new order), none for a marker
 already stale. Reconnects on any socket error; a (re)connection's first write is a single event, which
-FreeTAKServer takes as the client's registration, and the fleet follows on the next tick. Never raises
-out of a callback."""
+FreeTAKServer takes as the client's registration, and the fleet follows on the next tick. The reader thread
+forgets only the connection it was reading, so a replacement the sender made survives the old one's EOF.
+Never raises out of a callback."""
 import os
 import socket
 import threading
@@ -19,6 +20,17 @@ from sensor_msgs.msg import NavSatFix, NavSatStatus
 from std_msgs.msg import String
 
 from corridor_cot.cot import MarkerGate, course_from_quaternion, marker_or_reason, pli_events
+
+
+def _discard(sock):
+    """Release a connection the bridge no longer uses; shutdown wakes a reader blocked in recv on it."""
+    if sock is None:
+        return
+    for call in (lambda: sock.shutdown(socket.SHUT_RDWR), sock.close):
+        try:
+            call()
+        except Exception:
+            pass
 
 
 class CotBridge(Node):
@@ -75,7 +87,8 @@ class CotBridge(Node):
                 self.sock.sendall(''.join(events).encode())
             except OSError as exc:
                 self.get_logger().warn(f'TAK send failed: {exc}', throttle_duration_sec=10.0)
-                self.sock = None
+                dead, self.sock = self.sock, None
+                _discard(dead)
 
     def reader(self):
         buf = b''
@@ -91,7 +104,9 @@ class CotBridge(Node):
                 chunk = b''
             if not chunk:
                 with self.lock:
-                    self.sock = None
+                    if self.sock is s:          # the sender may already have replaced this connection
+                        self.sock = None
+                _discard(s)
                 buf = b''
                 continue
             buf += chunk
