@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Day 1 step 1: git repo, env.sh, empty workspace.
 set -eo pipefail
-cd ~/deletdis/ros2-corridor-swarm
+cd "${CORRIDOR_ROOT:-$HOME/deletdis/ros2-corridor-swarm}"
 [ -d .git ] || git init -q
 git config user.name "Göksel Özgür" && git config user.email "gokselozgur@novit.ai"
 mkdir -p ws/src

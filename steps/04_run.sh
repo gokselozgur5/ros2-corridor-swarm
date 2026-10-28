@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Day 1 step 4: git hygiene for the cloned sources, then launch and prove the topics and the bridge port.
 set -eo pipefail
-cd ~/deletdis/ros2-corridor-swarm
+cd "${CORRIDOR_ROOT:-$HOME/deletdis/ros2-corridor-swarm}"
 . ./env.sh
 # Cloned sources are not ours: track them as a vcs repos file, not as embedded repos.
 cat > ws/deps.repos <<'REPOS'
