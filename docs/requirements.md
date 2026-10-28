@@ -134,3 +134,67 @@ Verified by: NOT VERIFIED.
 
 Sources: `ws/src/corridor_nav/corridor_nav/waypoint_follower.py`, `pure_pursuit.py`, `local_pose.py`, `twist_stamper.py`; `ws/src/corridor_nav/launch/kinematic.launch.py`; `ws/src/corridor_nav/test/test_waypoint_follower.py`, `test_waypoint_follower_node.py`, `test_pure_pursuit.py`, `test_local_pose.py`; `ws/src/corridor_gz/launch/sim.launch.py`, `ws/src/corridor_gz/config/controllers_v1.yaml`; `ws/src/corridor_sim/corridor_sim/unicycle_sim.py`; `steps/08_proofs.sh`, `steps/12_gazebo_patrol.sh`; `ARCHITECTURE.md:43,87,90-91,102`; `README.md:42`; `PLAN.md`; git HEAD `60633c8`.
 
+## mission
+
+REQ-MISSION-01. The `corridor_msgs` package shall provide the interfaces `Patrol.action` (goal: vehicle, corridor_id, laps, speed_mps, clockwise; result: laps_done, distance_m, result; feedback: lap, lap_progress, distance_m, next_waypoint), `GeofenceEvent.msg` (EXIT=0, ENTER=1, WARN=2, signed distance_m, fix), `VehicleState.msg` and `FleetState.msg` (ws/src/corridor_msgs/CMakeLists.txt:12-15, action/Patrol.action, msg/*.msg).
+Verified by: PLAN.md:36 proof `ros2 interface show corridor_msgs/action/Patrol`; steps/08_proofs.sh:58 sends a Patrol goal. No dedicated test of the message set; Patrol and GeofenceEvent are exercised indirectly by test_patrol_server.py:24-25 and test_patrol_server_node.py:31-32.
+
+REQ-MISSION-02. The GeoJSON loader (`corridor_nav.geofence.load_geojson_polygon`) shall accept a file path or inline text and return the id and the lat/lon ring of the first Polygon found in a FeatureCollection, Feature or bare Polygon, reading positions in RFC 7946 lon/lat order, dropping altitude and the closing duplicate vertex, and taking the id from `properties.id`, `properties.name`, `feature.id` or `'corridor'` (geofence.py:40-77).
+Verified by: ws/src/corridor_nav/test/test_geofence.py::test_geojson_lonlat_order_and_closing_vertex, ::test_geojson_position_with_altitude, ::test_geojson_unclosed_ring_with_altitude_is_accepted, ::test_geojson_closing_vertex_compared_on_lonlat_only.
+
+REQ-MISSION-03. If a GeoJSON ring has fewer than 3 vertices, no area, a non-ring coordinates value, a non-numeric or non-finite position, or the document holds no Polygon, then the loader shall raise ValueError (geofence.py:28-37, 64-78).
+Verified by: test_geofence.py::test_geojson_ring_with_two_vertices_is_rejected, ::test_geojson_empty_ring_is_rejected, ::test_geojson_bad_position_is_rejected, ::test_geojson_collinear_ring_is_rejected, ::test_geojson_coordinates_that_are_not_rings_and_huge_integers_are_rejected.
+
+REQ-MISSION-04. The mission layer (`patrol_server`, `geofence_monitor`) shall convert fixes to local ENU metres through a `LocalFrame` whose origin is the polygon's first vertex, and shall compute inside/outside by the even-odd rule with a signed edge distance (positive inside, negative outside) (geofence.py:11-25, 81-111; patrol_server.py:148-150; geofence_monitor.py:27-29).
+Verified by: test_geofence.py::test_inside_and_outside, ::test_signed_distance_sign_and_magnitude, ::test_concave_polygon, ::test_local_frame_roundtrip.
+
+REQ-MISSION-05. If the `corridor_geojson` parameter is empty, then `patrol_server` and `geofence_monitor` shall raise ValueError at construction (patrol_server.py:145-147; geofence_monitor.py:24-26).
+Verified by: NOT VERIFIED.
+
+REQ-MISSION-06. The `geofence_monitor` shall subscribe to `/<v>/fix` for every name in parameter `vehicles` and, on each fix, publish a `GeofenceEvent` on `/fleet/geofence_events`: EXIT when the vehicle goes from inside to outside (or its first fix is outside; the first fix is checked for EXIT only), ENTER when it comes back inside, WARN once per approach when inside but closer than `warn_margin_m` (default 20.0) to the edge, re-armed when the distance reaches the margin again (geofence_monitor.py:21, 34-78).
+Verified by: steps/08_proofs.sh:36-50 (proof #8, EXIT `type: 0` within 30 s). ENTER and WARN: NOT VERIFIED. No unit test imports geofence_monitor.
+
+REQ-MISSION-07. When a vehicle leaves the polygon and parameter `cancel_on_exit` is true (default), the `geofence_monitor` shall publish an empty `nav_msgs/Path` on `/<v>/path` so the follower stops (geofence_monitor.py:22, 74-78).
+Verified by: steps/08_proofs.sh:44-50 (follower status must be `idle` after the EXIT event). PLAN.md:40 requires the proof to be run with the monitor disabled first and fail; steps/08 does not do that negative run.
+
+REQ-MISSION-08. The `patrol_server` shall run in a vehicle namespace, expose action `patrol` of type `corridor_msgs/action/Patrol`, and reject a goal whose non-empty `corridor_id` differs from the loaded polygon id or whose non-empty `vehicle` differs from parameter `vehicle` (patrol_server.py:141-170, 187-193).
+Verified by: steps/08_proofs.sh:58 and steps/12_gazebo_patrol.sh:18 (accepted goal on /v1/patrol). Rejection branches: NOT VERIFIED.
+
+REQ-MISSION-09. When a Patrol goal is accepted and a fix is known, the `patrol_server` shall publish a `Path` in frame `map` of the polygon vertices moved toward the centroid by `inset_m` (default 15.0), ordered by goal `clockwise`, starting at the vertex nearest the vehicle's fix position and closed back to that vertex (patrol_server.py:42-66, 144, 221, 264-268).
+Verified by: test_patrol_route.py::test_inset_moves_vertices_inward, ::test_lap_route_starts_near_vehicle_and_closes, ::test_lap_route_direction; test_patrol_server.py::test_lap_starts_at_the_vertex_nearest_the_fix_not_the_odometry; test_patrol_server_node.py::test_lap_starts_at_the_vertex_nearest_the_fix.
+
+REQ-MISSION-10. If no fix arrives within 5 s of goal acceptance, then the `patrol_server` shall abort the goal with result `error` (patrol_server.py:255-263).
+Verified by: NOT VERIFIED.
+
+REQ-MISSION-11. While a goal runs, the `patrol_server` shall publish feedback at least every 0.5 s (and on every route report, geofence event or cancel that wakes the loop) with the current lap, lap_progress 0..1 derived from distance travelled along the fix, cumulative distance_m, and the next route waypoint (patrol_server.py:269-291).
+Verified by: test_patrol_server.py::test_feedback_distance_and_next_waypoint_follow_the_fix; steps/08_proofs.sh:59 counts `lap_progress` lines.
+
+REQ-MISSION-12. The `patrol_server` shall stamp every Path it publishes with a unique, increasing, odd nanosecond stamp, and shall count a lap only when `follower/route` reports status `arrived` for that stamp; on a counted lap it re-sends the route, and succeeds with result `done` once `laps_done >= laps` for `laps > 0` (laps = 0 runs until cancelled) (patrol_server.py:88-107, 134-135, 274-278).
+Verified by: test_patrol_server.py::test_route_owner_follows_the_stamps, ::test_stamps_are_unique_even_while_the_clock_stands_still, ::test_server_stamps_are_odd_so_a_sim_time_path_from_another_node_never_matches, ::test_own_arrival_completes_the_lap; test_patrol_server_node.py::test_own_arrival_completes_the_lap; steps/08_proofs.sh:61 (`result: done`) and steps/12_gazebo_patrol.sh:23 (`result: done`, distance > 380 m).
+
+REQ-MISSION-13. If the follower reports holding a Path this server did not publish, then the `patrol_server` shall end the running goal as `preempted` without counting a lap and without clearing the follower (patrol_server.py:102-104, 132-133, 295).
+Verified by: test_patrol_server.py::test_foreign_arrival_is_not_a_lap_and_does_not_resend_the_route, ::test_foreign_empty_path_ends_the_goal_as_preempted_not_done, ::test_cancel_does_not_clear_a_route_the_server_no_longer_owns; same names in test_patrol_server_node.py.
+
+REQ-MISSION-14. When a `GeofenceEvent` of type EXIT for this server's `vehicle` arrives on `/fleet/geofence_events`, the `patrol_server` shall abort the current goal with result `geofence` and publish an empty Path if the follower still holds (or is about to receive) its route (patrol_server.py:102-104, 130-131, 180-185, 295-296).
+Verified by: test_patrol_server.py::test_geofence_exit_clears_the_route_when_the_monitor_does_not, ::test_geofence_exit_is_geofence_even_when_the_monitor_stopped_the_follower_first; same names in test_patrol_server_node.py; test_patrol_server.py::test_verdict_precedence.
+
+REQ-MISSION-15. When a cancel request arrives for the current goal, the `patrol_server` shall publish the empty Path (if it still owns the route) inside the cancel callback before answering the client, and finish the goal as `cancelled` (patrol_server.py:209-216, 293-311).
+Verified by: test_patrol_server.py::test_cancel_clears_the_route_inside_the_cancel_callback, ::test_cancel_of_a_goal_that_is_no_longer_current_does_not_clear_the_current_route, ::test_planner_sequence_cancel_then_patrol_leaves_the_new_route_in_place; test_patrol_server_node.py::test_cancel_is_answered_after_the_clear_so_a_successor_route_survives, ::test_planner_sequence_cancel_then_patrol_leaves_the_new_route_in_place.
+
+REQ-MISSION-16. When a new goal is accepted while one runs, the `patrol_server` shall mark the old goal `preempted`, wait up to 5 s for its loop to exit (logging an error and proceeding if it does not), and then start the new goal, so the two do not publish over each other's route (patrol_server.py:195-207).
+Verified by: test_patrol_server.py::test_new_goal_preempts_the_running_one_without_clearing_the_follower; test_patrol_server_node.py::test_new_goal_preempts_the_running_one_without_clearing_the_follower.
+
+REQ-MISSION-17. The `kinematic.launch.py` shall start, for each of `n` vehicles numbered from `first`, a `unicycle_sim`, a `waypoint_follower` and a `patrol_server` under namespace `/v<i>` with staggered start_x (20 + 25 m per vehicle number) and inset_m (30 + 8 m per launch index), plus one `geofence_monitor` with `vehicles` set to all names and `warn_margin_m` 15 (ws/src/corridor_nav/launch/kinematic.launch.py:20-33, 40-42).
+Verified by: steps/08_proofs.sh:66-80 (proof #10: n:=3, each of /v1 /v2 /v3 patrols with odom speed > 1 m/s). The PLAN.md:44 criterion `/clock >= 50 Hz` is not checked by any steps/*.sh (`grep /clock steps/` empty); unicycle_sim publishes no /clock (ws/src/corridor_sim/corridor_sim/unicycle_sim.py, only `get_clock()` calls).
+
+REQ-MISSION-18. [GAP] The `patrol_server` shall honour the goal field `speed_mps` (0 = vehicle default) when driving the follower (Patrol.action:5). The field is never read by patrol_server.py (no `speed_mps` reference); the follower speed comes only from its own `speed_mps` parameter (waypoint_follower.py:39, 111; kinematic.launch.py:28). The planner always sends 0.0 (corridor_planner/mission_planner.py:170).
+Verified by: NOT VERIFIED.
+
+REQ-MISSION-19. [GAP] The mission layer shall publish `corridor_msgs/FleetState` on `/fleet/state` (ARCHITECTURE.md:100 states nobody publishes it; `grep -rn FleetState ws/src` outside corridor_msgs finds no use at all).
+Verified by: NOT VERIFIED.
+
+REQ-MISSION-20. [PLANNED] Where the Gazebo backend runs multiple vehicles, the system shall keep `ros2 topic hz /clock` at or above 50 Hz with three vehicles patrolling (PLAN.md:43-44). sim.launch.py spawns only v1 (ws/src/corridor_gz/launch/sim.launch.py:1, 38); kinematic v2/v3 can run beside it via `first:=2 n:=2` (kinematic.launch.py:42).
+Verified by: NOT VERIFIED.
+
+Sources: ws/src/corridor_msgs/{CMakeLists.txt,action/Patrol.action,msg/GeofenceEvent.msg,msg/VehicleState.msg,msg/FleetState.msg}; ws/src/corridor_nav/corridor_nav/{geofence.py,patrol_server.py,geofence_monitor.py,waypoint_follower.py}; ws/src/corridor_nav/launch/kinematic.launch.py; ws/src/corridor_nav/test/{test_geofence.py,test_patrol_route.py,test_patrol_server.py,test_patrol_server_node.py}; ws/src/corridor_gz/launch/sim.launch.py; ws/src/corridor_sim/corridor_sim/unicycle_sim.py; ws/src/corridor_planner/corridor_planner/mission_planner.py; steps/08_proofs.sh; steps/12_gazebo_patrol.sh; PLAN.md:35-44; ARCHITECTURE.md:100; git HEAD 60633c8.
+
