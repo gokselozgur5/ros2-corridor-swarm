@@ -16,14 +16,13 @@ import time
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import PoseStamped
-from nav_msgs.msg import Odometry, Path
+from nav_msgs.msg import Path
 import base64
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile
-from sensor_msgs.msg import Image, NavSatFix
+from sensor_msgs.msg import Image
 from std_msgs.msg import String
 
 from corridor_msgs.action import Patrol
@@ -77,10 +76,8 @@ def start_xy(frame, fix):
 class Vehicle:
     def __init__(self):
         self.fix = None
-        self.odom = None
         self.image = None
         self.state = None      # the vehicle's last corridor_msgs/VehicleState from /fleet/state
-        self.status = 'unknown'
         self.goal = None       # ClientGoalHandle of the active patrol
         self.mode = 'idle'
 
@@ -105,12 +102,6 @@ class MissionPlanner(Node):
         self.patrol_clients = {}
         for v in self.get_parameter('vehicles').value:
             self.vehicles[v] = Vehicle()
-            self.create_subscription(NavSatFix, f'/{v}/fix', lambda m, v=v: setattr(self.vehicles[v], 'fix', m), 10, callback_group=cb)
-            self.create_subscription(Odometry, f'/{v}/odom', lambda m, v=v: setattr(self.vehicles[v], 'odom', m), 10, callback_group=cb)
-            # the follower latches its status (transient local, depth 1): a planner that starts later only
-            # receives the retained sample when it asks for the same durability
-            self.create_subscription(String, f'/{v}/follower/status', lambda m, v=v: setattr(self.vehicles[v], 'status', m.data),
-                                     QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL), callback_group=cb)
             self.create_subscription(Image, f'/{v}/camera/image', lambda m, v=v: setattr(self.vehicles[v], 'image', m), 1, callback_group=cb)
             self.path_pubs[v] = self.create_publisher(Path, f'/{v}/path', 10)
             self.patrol_clients[v] = ActionClient(self, Patrol, f'/{v}/patrol', callback_group=cb)
@@ -149,7 +140,7 @@ class MissionPlanner(Node):
     # ----- tools -----------------------------------------------------------------------------
     def _summary(self, name):
         v = self.vehicles[name]
-        d = {'vehicle': name, 'mode': v.state.mode if v.state is not None else 'unknown', 'follower': v.status}
+        d = {'vehicle': name, 'mode': v.state.mode if v.state is not None else 'unknown'}
         if v.state is not None and v.state.goal_id:
             d['goal_id'] = v.state.goal_id
         if v.fix is not None:

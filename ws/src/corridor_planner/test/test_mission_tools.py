@@ -6,7 +6,6 @@ import threading
 import time
 
 import pytest
-from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import String
 
@@ -63,7 +62,6 @@ def test_goto_publishes_the_path_after_the_old_goal_exited():
     v = node.vehicles['v1']
     v.goal = FakeGoalHandle(log, exit_delay_s=0.2)
     v.fix = NavSatFix(latitude=52.7001, longitude=-2.9997)
-    v.odom = Odometry()
     lat, lon = node.frame.to_latlon(100.0, 60.0)
     out = node.t_goto('v1', lat, lon)
     assert out['accepted'] is True
@@ -110,7 +108,6 @@ def test_goto_path_starts_at_the_fix_not_at_odom():
     node = planner(log)
     v = node.vehicles['v1']
     v.fix = fix_at(node.frame, 20.0, 20.0)
-    v.odom = Odometry()
     lat, lon = node.frame.to_latlon(100.0, 20.0)
     out = node.t_goto('v1', lat, lon)
     assert out['accepted'] is True and (out['x'], out['y']) == (100.0, 20.0)
@@ -126,7 +123,6 @@ def test_goto_without_a_fix_is_refused_and_cancels_nothing():
     log = []
     node = planner(log)
     v = node.vehicles['v1']
-    v.odom = Odometry()
     v.goal = FakeGoalHandle(log)
     v.mode = 'patrol'
     lat, lon = node.frame.to_latlon(100.0, 20.0)
@@ -223,7 +219,6 @@ def test_summary_without_a_corridor_has_no_xy():
     node.frame = node.poly = None
     v = node.vehicles['v1']
     v.fix = NavSatFix(latitude=52.7001, longitude=-2.9997)
-    v.odom = Odometry()
     d = node._summary('v1')
     assert 'x' not in d and 'y' not in d and d['lat'] == 52.7001
 
