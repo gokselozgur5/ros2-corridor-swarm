@@ -58,7 +58,7 @@ def until(predicate, timeout=2.0, step=0.01):
     return value
 
 
-# ----- stubs, installed only when ROS is absent -------------------------------------------------
+# ----- stubs, installed when ROS is absent; foxglove_msgs alone wherever that package is missing -----
 
 def message(name, **fields):
     """A message class with ROS-like defaults: nested messages constructed, numbers 0, strings empty."""
@@ -247,14 +247,15 @@ class Patrol:
     Feedback = message('Patrol_Feedback', lap=int, lap_progress=float, distance_m=float, next_waypoint=Point)
 
 
-def install_stubs():
-    def module(name, **attrs):
-        mod = types.ModuleType(name)
-        mod.__dict__.update(attrs)
-        mod.__stub__ = True
-        sys.modules[name] = mod
-        return mod
+def module(name, **attrs):
+    mod = types.ModuleType(name)
+    mod.__dict__.update(attrs)
+    mod.__stub__ = True
+    sys.modules[name] = mod
+    return mod
 
+
+def install_stubs():
     def noop(*args, **kw):
         return None
 
@@ -281,6 +282,14 @@ def install_stubs():
 
 if not ROS:
     install_stubs()
+else:
+    try:
+        import foxglove_msgs.msg  # noqa: F401
+    except ImportError:
+        # Thor has rclpy but not ros-jazzy-foxglove-msgs; map_overlay imports it at module level and the
+        # launch_testing plugin turns one module's import error into an error for the whole directory.
+        # GeoJSON is an envelope with one string field; the stand-in keeps map_overlay's tests running.
+        module('foxglove_msgs').msg = module('foxglove_msgs.msg', GeoJSON=GeoJSON)
 
 
 @pytest.fixture
