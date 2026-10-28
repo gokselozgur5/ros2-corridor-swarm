@@ -7,7 +7,7 @@ for f in .gitignore env.sh ws/deps.repos; do
   if [ -e "$f" ]; then echo "01_init.sh: $f already exists, this checkout is initialised; refusing to run" >&2; exit 1; fi
 done
 [ -d .git ] || git init -q
-git config user.name "Göksel Özgür" && git config user.email "gokselozgur@novit.ai"
+git config user.name "Göksel Özgür" && git config user.email "gokselozgur5@gmail.com"
 mkdir -p ws/src
 cat > env.sh <<'ENV'
 # source this file: . env.sh
