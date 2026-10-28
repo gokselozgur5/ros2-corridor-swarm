@@ -169,3 +169,45 @@ def test_request_text_quotes_the_label_and_prints_six_decimals():
     from corridor_cot.cot import request_text
     marker = {'uid': 'atak-1', 'callsign': 'RALLY1', 'lat': 52.701, 'lon': -2.9985, 'type': 'b-m-p-w'}
     assert request_text(marker) == 'send the nearest vehicle to marker "RALLY1" at 52.701000, -2.998500'
+
+
+# ----- Aether r3: the request text is not an identity; the tag is (two markers, one callsign, one spot)
+
+def test_marker_gate_tags_each_request_and_a_busy_reply_frees_only_the_placement_it_dropped():
+    from corridor_cot.cot import MarkerGate
+    gate = MarkerGate(move_m=5.0)
+    a = {'uid': 'marker-a', 'callsign': 'RALLY', 'lat': 52.701, 'lon': -2.998}
+    b = dict(a, uid='marker-b')                                  # same name, same spot: the same request text
+    tag_a, tag_b = gate.admit(a), gate.admit(b)
+    assert tag_a and tag_b and tag_a != tag_b, (tag_a, tag_b)
+    assert tag_a.startswith('[req ') and tag_a.endswith(']'), tag_a
+    busy = 'busy with the previous request, dropped: '
+    text = 'send the nearest vehicle to marker "RALLY" at 52.701000, -2.998000'
+    assert gate.dropped(f'{busy}{tag_b} {text}') == 'marker-b'
+    assert gate.admit(b) and not gate.admit(a)                   # b passes again; a still waits for its own answer
+    assert gate.dropped(f'{busy}{tag_a} {text}') == 'marker-a'
+    assert gate.admit(a)
+    assert gate.dropped(f'dry run, no model: {text}') is None    # not a busy reply
+    assert gate.dropped(f'{busy}{text}') is None                 # an operator's request carries no tag
+    assert gate.dropped(f'{busy}[req 999] {text}') is None       # a tag this gate never issued
+
+
+def test_a_late_busy_reply_does_not_free_a_placement_that_moved_since():
+    from corridor_cot.cot import MarkerGate
+    gate = MarkerGate(move_m=5.0)
+    north = 1.0 / 111320.0
+    a = {'uid': 'marker-a', 'callsign': 'RALLY', 'lat': 52.701, 'lon': -2.998}
+    old_tag = gate.admit(a)
+    moved = dict(a, lat=a['lat'] + 20 * north)
+    assert gate.admit(moved)                                     # moved: a new placement, a new request
+    assert gate.dropped(f'busy with the previous request, dropped: {old_tag} x') is None
+    assert not gate.admit(moved), 'the current placement stays known: the late rejection was about the old spot'
+
+
+def test_marker_gate_keeps_a_bounded_number_of_unanswered_requests():
+    from corridor_cot.cot import MarkerGate
+    gate = MarkerGate(move_m=5.0)
+    tags = [gate.admit({'uid': f'm{i}', 'lat': 52.7, 'lon': -2.9 + i * 0.01}) for i in range(40)]
+    assert len(gate.pending) == 32
+    assert gate.dropped(f'busy with the previous request, dropped: {tags[0]} x') is None    # trimmed, 40 later
+    assert gate.dropped(f'busy with the previous request, dropped: {tags[-1]} x') == 'm39'
