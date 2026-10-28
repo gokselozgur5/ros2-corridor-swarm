@@ -5,6 +5,7 @@ import pathlib
 import threading
 import time
 
+import pytest
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix
 from std_msgs.msg import String
@@ -199,6 +200,22 @@ def test_summary_carries_the_goal_id_fleet_state_reports():
     node = planner([])
     node.vehicles['v1'].state = VehicleState(name='v1', mode='patrol', goal_id='ab')
     assert node._summary('v1')['goal_id'] == 'ab'
+
+
+def test_fleet_state_sets_the_fix_goto_starts_from():
+    node = planner([])
+    node.on_fleet(fleet(node, v1=(20.0, 70.0, 'idle')))
+    assert mp.start_xy(node.frame, node.vehicles['v1'].fix) == pytest.approx((20.0, 70.0), abs=1e-6)
+
+
+def test_a_vehicle_the_fleet_reports_unknown_loses_its_fix_and_goto_refuses():
+    log = []
+    node = planner(log)
+    node.on_fleet(fleet(node, v1=(20.0, 20.0, 'idle')))
+    node.on_fleet(fleet(node, v1=None))
+    assert node.vehicles['v1'].fix is None
+    lat, lon = node.frame.to_latlon(100.0, 20.0)
+    assert node.t_goto('v1', lat, lon)['accepted'] is False and log == []
 
 
 def test_summary_without_a_corridor_has_no_xy():
