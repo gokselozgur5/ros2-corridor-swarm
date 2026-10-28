@@ -77,3 +77,14 @@ Phase 1 is the long pole: four source packages to build on an unusual underlay. 
 ## Budget
 
 The API credit is $200. Planning calls on Opus 5.5 run at maybe 5k input / 1k output tokens each, about $0.04. The Haiku status loop at 2 calls a minute is under $0.05 an hour. A full day of development and demos is a few dollars; the credit is not the constraint, Phase 1 build time is.
+
+## Roadmap (2026-10-28)
+
+Requirements are in `docs/requirements.md`; the ten `[GAP]` lines there are the backlog behind these dates. Estimates are working days for one person on Thor.
+
+| target | work | depends on |
+|---|---|---|
+| 2026-10-29 | ADR-0015 `fleet_state` node, ADR-0016 geofence cancel at the mission layer (decide, then code with tests seen red) | nothing |
+| 2026-10-30 | ADR-0017 `goto` action, ADR-0018 launch per backend, #17 lifecycle nodes; `speed_mps` honoured (REQ-MISSION-18), `/clock` >= 50 Hz proof with three Gazebo vehicles (REQ-SIMULATION-19) | the two above |
+| 2026-10-30 | #15 #16 ATAK emulator on the Mac against FreeTAKServer, both directions live | ATAK emulator on the Mac |
+| 2026-10-31 | #18 demo video, README rewrite, status-loop cost in README (REQ-PLANNER-21), repo public | decision on the LAN IP in early history |
