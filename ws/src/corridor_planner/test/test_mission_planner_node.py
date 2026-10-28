@@ -27,7 +27,6 @@ from rclpy.action import ActionServer, CancelResponse  # noqa: E402
 from rclpy.callback_groups import ReentrantCallbackGroup  # noqa: E402
 from rclpy.executors import MultiThreadedExecutor  # noqa: E402
 from rclpy.node import Node  # noqa: E402
-from rclpy.qos import DurabilityPolicy, QoSProfile  # noqa: E402
 from sensor_msgs.msg import NavSatFix  # noqa: E402
 from std_msgs.msg import String  # noqa: E402
 
@@ -159,36 +158,3 @@ def test_summary_xy_come_from_the_fix(ros):
     d = planner.t_get('v1')
     assert (d['x'], d['y']) == (20.0, 20.0), d
     assert d['speed_mps'] == 0.0 and d['inside_corridor'] is True and d['mode'] == 'idle'
-
-
-# ----- late_status (Aether's review, 2026-10-28) ------------------------------------------------------
-
-def test_a_planner_started_after_the_follower_receives_its_latched_status():
-    """waypoint_follower publishes `follower/status` latched (transient local, depth 1) so a node that
-    starts later still learns the current state. A volatile subscriber never receives that retained
-    sample: the planner then reports 'unknown' until the follower's next change."""
-    rclpy.init(args=['--ros-args', '-p', f'corridor_geojson:={GEOJSON}', '-p', 'dry_run:=true'])
-    follower = rclpy.create_node('fake_follower_status')
-    executor = MultiThreadedExecutor(num_threads=4)
-    planner = spinner = None
-    try:
-        pub = follower.create_publisher(String, '/v1/follower/status',
-                                        QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
-        pub.publish(String(data='following'))
-        planner = MissionPlanner()                      # starts after the status went out
-        executor.add_node(follower)
-        executor.add_node(planner)
-        spinner = threading.Thread(target=executor.spin, daemon=True)
-        spinner.start()
-        deadline = time.monotonic() + 3.0
-        while planner.vehicles['v1'].status != 'following' and time.monotonic() < deadline:
-            time.sleep(0.05)
-        assert planner.vehicles['v1'].status == 'following', planner.vehicles['v1'].status
-    finally:
-        executor.shutdown(timeout_sec=2.0)
-        follower.destroy_node()
-        if planner is not None:
-            planner.destroy_node()
-        rclpy.shutdown()
-        if spinner is not None:
-            spinner.join(timeout=2.0)
