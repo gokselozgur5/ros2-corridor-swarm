@@ -57,6 +57,7 @@ class CotBridge(Node):
         self.request_pub = self.create_publisher(String, '/mission/request', 10)
         self.create_subscription(String, '/mission/reply', self.on_reply, 10)
         self.pending = OrderedDict()   # request text -> marker uid, for matching the planner's busy reply
+        self.gate_lock = threading.Lock()   # gate and pending: the reader thread admits, the executor forgets
         self.sock = None
         self.lock = threading.Lock()
         self.create_timer(self.get_parameter('period_s').value, self.send_pli)
@@ -130,21 +131,27 @@ class CotBridge(Node):
         marker, reason = marker_or_reason(xml)
         if reason:
             self.get_logger().warn(f'marker dropped: {reason}')
-        if marker and not marker['uid'].startswith('corridor-') and self.gate.admit(marker):
-            text = f"send the nearest vehicle to marker {marker['callsign'] or marker['uid']} at {marker['lat']:.6f}, {marker['lon']:.6f}"
-            self.request_pub.publish(String(data=text))
-            self.get_logger().info(f'marker -> request: {text}')
+        if not marker or marker['uid'].startswith('corridor-'):
+            return
+        text = f"send the nearest vehicle to marker {marker['callsign'] or marker['uid']} at {marker['lat']:.6f}, {marker['lon']:.6f}"
+        with self.gate_lock:
+            if not self.gate.admit(marker):
+                return
             self.pending[text] = marker['uid']
             while len(self.pending) > 32:
                 self.pending.popitem(last=False)
+        self.request_pub.publish(String(data=text))
+        self.get_logger().info(f'marker -> request: {text}')
 
     def on_reply(self, msg):
         """The planner drops a request while a plan runs: forget that placement so the marker's re-send is asked again."""
         if not msg.data.startswith(BUSY_REPLY):
             return
-        uid = self.pending.pop(msg.data.partition('dropped: ')[2], None)
+        with self.gate_lock:
+            uid = self.pending.pop(msg.data.partition('dropped: ')[2], None)
+            if uid is not None:
+                self.gate.forget(uid)
         if uid is not None:
-            self.gate.forget(uid)
             self.get_logger().warn(f'planner busy, marker {uid} will be requested again when ATAK re-sends it')
 
 
