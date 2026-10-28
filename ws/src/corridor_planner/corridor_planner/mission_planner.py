@@ -27,7 +27,7 @@ from sensor_msgs.msg import Image, NavSatFix
 from std_msgs.msg import String
 
 from corridor_msgs.action import Patrol
-from corridor_msgs.msg import GeofenceEvent
+from corridor_msgs.msg import FleetState, GeofenceEvent
 from corridor_nav.geofence import LocalFrame, load_geojson_polygon, signed_distance
 from corridor_planner.camera import image_to_png
 from corridor_planner.planner import PLANNING_MODEL, Planner
@@ -79,6 +79,7 @@ class Vehicle:
         self.fix = None
         self.odom = None
         self.image = None
+        self.state = None      # the vehicle's last corridor_msgs/VehicleState from /fleet/state
         self.status = 'unknown'
         self.goal = None       # ClientGoalHandle of the active patrol
         self.mode = 'idle'
@@ -113,6 +114,7 @@ class MissionPlanner(Node):
             self.create_subscription(Image, f'/{v}/camera/image', lambda m, v=v: setattr(self.vehicles[v], 'image', m), 1, callback_group=cb)
             self.path_pubs[v] = self.create_publisher(Path, f'/{v}/path', 10)
             self.patrol_clients[v] = ActionClient(self, Patrol, f'/{v}/patrol', callback_group=cb)
+        self.create_subscription(FleetState, '/fleet/state', self.on_fleet, 10, callback_group=cb)
         self.events = collections.deque(maxlen=200)
         self.create_subscription(GeofenceEvent, '/fleet/geofence_events', lambda e: self.events.appendleft(e), 20, callback_group=cb)
 
@@ -135,6 +137,13 @@ class MissionPlanner(Node):
         self.busy = threading.Lock()
         self.get_logger().info(f'mission planner: {list(self.vehicles)} on corridor {self.corridor_id}, '
                                f'model {self.get_parameter("model").value}, dry_run={client is None}')
+
+    def on_fleet(self, msg):
+        for st in msg.vehicles:
+            v = self.vehicles.get(st.name)
+            if v is None:
+                continue
+            v.state = st
 
     # ----- tools -----------------------------------------------------------------------------
     def _summary(self, name):
