@@ -3,6 +3,8 @@
 # route per vehicle and one heading line per vehicle on /map/overlay (foxglove_msgs/GeoJSON) and /map/markers, each heading
 # line 12 m long from the fix and the 3D arrow starting where the fix is in map metres (not at odom x/y). OVERLAY=false runs
 # the launch without the node and must fail. Prints PROOF 19 OVERLAY PASS|FAIL and exits 1 on FAIL.
+# Limit: the unicycle sim's odom is the map position, so an overlay drawing from odom would pass here too; the fix/odom
+# divergence is covered by test_map_overlay.py, this proof covers the launch wiring, the message shapes and the geometry.
 cd ~/deletdis/ros2-corridor-swarm
 source ./env.sh
 source ./steps/lib.sh
