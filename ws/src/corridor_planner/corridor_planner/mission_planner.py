@@ -5,12 +5,15 @@
 published by corridor_nav's fleet_state, ADR-0015), send Patrol goals, publish a two-pose Path (fix,
 target) for goto, cancel for stop. The planner never publishes cmd_vel. A vehicle's position is its fix
 through the corridor frame, as the follower does (#19); mode and speed are what fleet_state observed.
+cot_bridge prefixes its requests with a tag, '[req N] ', and finds the placement a busy reply gave up on
+by it: the busy reply echoes the request whole, the model and the dry-run echo see it without the tag.
 Refusals and SDK errors become diagnostics on /diagnostics, not crashes.
 """
 import collections
 import json
 import math
 import os
+import re
 import threading
 import time
 
@@ -32,6 +35,8 @@ from corridor_nav.geofence import LocalFrame, load_geojson_polygon, signed_dista
 from corridor_planner.camera import image_to_png
 from corridor_planner.planner import PLANNING_MODEL, Planner
 from corridor_planner.tools import SCHEMAS
+
+REQUEST_TAG = re.compile(r'^\[req \d+\] ')   # cot_bridge's request tag; the same expression lives in corridor_cot.cot
 
 EVENT_NAMES = {GeofenceEvent.EXIT: 'exit', GeofenceEvent.ENTER: 'enter', GeofenceEvent.WARN: 'warn'}
 STOP_TIMEOUT_S = 3.0   # cancel acknowledged and the old goal's result back, together
@@ -278,7 +283,7 @@ class MissionPlanner(Node):
 
     def on_request(self, msg):
         if not self.busy.acquire(blocking=False):
-            self.reply(f'busy with the previous request, dropped: {msg.data}')   # cot_bridge matches this text
+            self.reply(f'busy with the previous request, dropped: {msg.data}')   # the request whole, tag included: cot_bridge resolves it by the tag
             return
         try:
             threading.Thread(target=self.handle_request, args=(msg.data,), daemon=True).start()
@@ -287,6 +292,7 @@ class MissionPlanner(Node):
             raise
 
     def handle_request(self, text):
+        text = REQUEST_TAG.sub('', text, count=1)   # the tag is the bridge's bookkeeping, not part of the order
         try:
             if self.planner is None:
                 self.reply(f'dry run, no model: {text}')

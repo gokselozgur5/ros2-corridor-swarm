@@ -1,10 +1,13 @@
 """Cursor-on-Target XML, built and parsed without pytak so it is unit-testable and dependency-free."""
 import math
+import re
 import xml.etree.ElementTree as ET
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 
 ISO = '%Y-%m-%dT%H:%M:%S.%fZ'
+BUSY_REPLY = 'busy with the previous request'   # mission_planner's rejection, followed by ', dropped: <request>'
+REQUEST_TAG = re.compile(r'^\[req \d+\] ')   # in front of every request the bridge publishes; mission_planner strips it
 
 
 def _stamp(t):
@@ -102,6 +105,29 @@ def parse_marker(xml_text, now=None):
     return marker_or_reason(xml_text, now)[0]
 
 
+_NOT_LABEL = re.compile(r'[^A-Za-z0-9 _.-]')
+LABEL_MAX = 24
+
+
+def label(marker):
+    """The marker's display name as the planner may see it: the callsign, else the uid, else 'marker', kept to
+    [A-Za-z0-9 _.-], single spaces and at most LABEL_MAX characters. The 8087 stream is unauthenticated and the
+    text ends up in the model's user turn, so whatever someone typed into ATAK is a name to show, never wording
+    to follow; the planner's SYSTEM prompt says the same about the quoted label."""
+    for raw in (marker.get('callsign'), marker.get('uid')):
+        text = ' '.join(_NOT_LABEL.sub('', raw or '').split())[:LABEL_MAX].strip()
+        if text:
+            return text
+    return 'marker'
+
+
+def request_text(marker):
+    """The /mission/request text for a marker. The label is quoted and cannot contain a quote, so the planner
+    can tell the name from the order; mission_planner echoes this text back in its busy reply, so the bridge
+    keys its pending requests on it."""
+    return f'send the nearest vehicle to marker "{label(marker)}" at {marker["lat"]:.6f}, {marker["lon"]:.6f}'
+
+
 def _metres(a, b):
     """Flat-earth distance between two (lat, lon) pairs; good to a few percent over the tens of metres it is used for."""
     k = 111320.0
@@ -113,26 +139,52 @@ class MarkerGate:
     has moved by `move_m`. ATAK re-sends the same uid on a rename after the auto callsign, on a refresh and
     through a second client; each of those cost a planning run or was dropped by the planner's busy guard.
     Remembers at most `capacity` uids (the stream is unauthenticated: unique uids must not grow memory without
-    bound); a marker without a uid has nothing to deduplicate on and always passes."""
+    bound); a marker without a uid has nothing to deduplicate on and always passes.
+    Every admitted placement gets a request tag, '[req N]', which the bridge puts in front of the request text.
+    mission_planner echoes the text whole when it drops a request as busy, so `dropped` finds the placement by
+    its tag: the human-readable text is not an identity, two markers with one callsign on one spot share it."""
 
-    def __init__(self, move_m=5.0, capacity=256):
+    def __init__(self, move_m=5.0, capacity=256, unanswered=32):
         self.move_m = move_m
         self.capacity = capacity
-        self.sent = OrderedDict()
+        self.unanswered = unanswered
+        self.sent = OrderedDict()      # uid -> (lat, lon) of the placement last requested
+        self.pending = OrderedDict()   # tag -> (uid, placement) of a request the planner has not rejected
+        self.issued = 0
 
     def admit(self, marker):
+        """The tag for this marker's request ('[req N]') when the placement is new; None for a refresh."""
         uid = marker['uid']
-        if not uid:
-            return True
         here = (marker['lat'], marker['lon'])
-        last = self.sent.get(uid)
-        if last is not None and _metres(last, here) < self.move_m:
-            return False
-        self.sent[uid] = here
-        self.sent.move_to_end(uid)
-        while len(self.sent) > self.capacity:
-            self.sent.popitem(last=False)
-        return True
+        if uid:
+            last = self.sent.get(uid)
+            if last is not None and _metres(last, here) < self.move_m:
+                return None
+            self.sent[uid] = here
+            self.sent.move_to_end(uid)
+            while len(self.sent) > self.capacity:
+                self.sent.popitem(last=False)
+        tag = f'[req {self.issued}]'
+        self.issued += 1
+        self.pending[tag] = (uid, here)
+        while len(self.pending) > self.unanswered:
+            self.pending.popitem(last=False)
+        return tag
+
+    def dropped(self, reply):
+        """The uid whose placement the planner's busy reply gave up on, forgotten so the marker's next event
+        passes again; None for any other reply, for a tag this gate did not issue (an operator's own request, or
+        one older than `unanswered` later ones) and for a uid that has moved to a newer placement since."""
+        if not reply.startswith(BUSY_REPLY):
+            return None
+        tagged = REQUEST_TAG.match(reply.partition('dropped: ')[2])
+        if tagged is None:
+            return None
+        uid, here = self.pending.pop(tagged.group(0).rstrip(), (None, None))
+        if uid and self.sent.get(uid) == here:
+            del self.sent[uid]
+            return uid
+        return None
 
     def forget(self, uid):
         """The placement was not acted on (the planner was busy): the next event for this uid passes again."""
