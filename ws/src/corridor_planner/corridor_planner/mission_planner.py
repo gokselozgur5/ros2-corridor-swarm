@@ -148,7 +148,9 @@ class MissionPlanner(Node):
     # ----- tools -----------------------------------------------------------------------------
     def _summary(self, name):
         v = self.vehicles[name]
-        d = {'vehicle': name, 'mode': v.mode, 'follower': v.status}
+        d = {'vehicle': name, 'mode': v.state.mode if v.state is not None else 'unknown', 'follower': v.status}
+        if v.state is not None and v.state.goal_id:
+            d['goal_id'] = v.state.goal_id
         if v.fix is not None:
             d['lat'] = round(v.fix.latitude, 6)
             d['lon'] = round(v.fix.longitude, 6)
