@@ -2,9 +2,9 @@
 
 Run on Thor after `. ./env.sh`, on a private domain (the fake v1 publishes on live topics):
     ROS_DOMAIN_ID=77 REQUIRE_ROS=1 python3 -m pytest -q -rs ws/src/corridor_planner/test/test_mission_planner_node.py
-Skipped where conftest.py had to stand in for rclpy, unless REQUIRE_ROS is set. A fake v1 provides the
-fix (map 20,20), an odom stuck at (0,0) like the Gazebo spawn, and a Patrol server that models the old
-0.5 s-poll cancel handling, the slowest the planner must tolerate; the merged corridor_nav server clears
+Skipped where conftest.py had to stand in for rclpy, unless REQUIRE_ROS is set. A fake v1 publishes the
+FleetState corridor_nav's fleet_state would (fix at map 20,20, speed 0; the planner reads no odom, ADR-0015)
+and runs a Patrol server that models the old 0.5 s-poll cancel handling, the slowest the planner must tolerate; the merged corridor_nav server clears
 an owned route inside its cancel callback, so the real pair is faster than this fake."""
 import math
 import pathlib
@@ -22,7 +22,7 @@ if __import__('os').environ.get('ROS_DOMAIN_ID', '0') == '42':
     pytest.exit('ROS_DOMAIN_ID is the demo domain 42 and this test publishes a fake v1 on live topics: run with ROS_DOMAIN_ID=77', returncode=3)
 
 from geometry_msgs.msg import PoseStamped  # noqa: E402
-from nav_msgs.msg import Odometry, Path  # noqa: E402
+from nav_msgs.msg import Path  # noqa: E402
 from rclpy.action import ActionServer, CancelResponse  # noqa: E402
 from rclpy.callback_groups import ReentrantCallbackGroup  # noqa: E402
 from rclpy.executors import MultiThreadedExecutor  # noqa: E402
@@ -32,6 +32,7 @@ from sensor_msgs.msg import NavSatFix  # noqa: E402
 from std_msgs.msg import String  # noqa: E402
 
 from corridor_msgs.action import Patrol  # noqa: E402
+from corridor_msgs.msg import FleetState, VehicleState  # noqa: E402
 from corridor_nav.geofence import LocalFrame  # noqa: E402
 from corridor_planner.mission_planner import MissionPlanner  # noqa: E402
 
@@ -49,16 +50,16 @@ class FakeVehicle(Node):
         self.exited = None       # monotonic time the last cancelled goal's execute returned
         self.path_pub = self.create_publisher(Path, '/v1/path', 10)
         self.create_subscription(Path, '/v1/path', self.on_path, 10, callback_group=cb)
-        self.fix_pub = self.create_publisher(NavSatFix, '/v1/fix', 10)
-        self.odom_pub = self.create_publisher(Odometry, '/v1/odom', 10)
+        self.fleet_pub = self.create_publisher(FleetState, '/fleet/state', 10)
         self.server = ActionServer(self, Patrol, '/v1/patrol', execute_callback=self.execute,
                                    cancel_callback=lambda _: CancelResponse.ACCEPT, callback_group=cb)
         self.create_timer(0.1, self.publish_pose, callback_group=cb)
 
     def publish_pose(self):
         lat, lon = FRAME.to_latlon(20.0, 20.0)
-        self.fix_pub.publish(NavSatFix(latitude=lat, longitude=lon))
-        self.odom_pub.publish(Odometry())
+        st = VehicleState(name='v1', mode='idle', fix=NavSatFix(latitude=lat, longitude=lon), inside_corridor=True)
+        st.pose.position.x, st.pose.position.y = 20.0, 20.0
+        self.fleet_pub.publish(FleetState(corridor_id='demo', vehicles=[st]))
 
     def on_path(self, msg):
         self.paths.append((len(msg.poses), msg.poses[0].pose.position.x if msg.poses else None))
@@ -104,7 +105,7 @@ def ros():
     deadline = time.monotonic() + 5.0
     while planner.vehicles['v1'].fix is None and time.monotonic() < deadline:
         time.sleep(0.05)
-    assert planner.vehicles['v1'].fix is not None, 'no fix reached the planner'
+    assert planner.vehicles['v1'].fix is not None, 'no fleet state reached the planner'
     yield vehicle, planner
     if planner.vehicles['v1'].goal is not None:
         planner.t_stop('v1')
@@ -155,12 +156,9 @@ def test_goto_path_starts_at_the_fix_not_at_odom(ros):
 
 def test_summary_xy_come_from_the_fix(ros):
     vehicle, planner = ros
-    deadline = time.monotonic() + 2.0
-    while planner.vehicles['v1'].odom is None and time.monotonic() < deadline:
-        time.sleep(0.05)
     d = planner.t_get('v1')
     assert (d['x'], d['y']) == (20.0, 20.0), d
-    assert d['speed_mps'] == 0.0 and d['inside_corridor'] is True
+    assert d['speed_mps'] == 0.0 and d['inside_corridor'] is True and d['mode'] == 'idle'
 
 
 # ----- late_status (Aether's review, 2026-10-28) ------------------------------------------------------
