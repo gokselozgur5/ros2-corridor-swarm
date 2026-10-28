@@ -142,14 +142,16 @@ class MarkerGate:
     bound); a marker without a uid has nothing to deduplicate on and always passes.
     Every admitted placement gets a request tag, '[req N]', which the bridge puts in front of the request text.
     mission_planner echoes the text whole when it drops a request as busy, so `dropped` finds the placement by
-    its tag: the human-readable text is not an identity, two markers with one callsign on one spot share it."""
+    its tag: the human-readable text is not an identity, two markers with one callsign on one spot share it, and
+    neither are coordinates, a marker moved away and back has a new request at the old spot."""
 
     def __init__(self, move_m=5.0, capacity=256, unanswered=32):
         self.move_m = move_m
         self.capacity = capacity
         self.unanswered = unanswered
         self.sent = OrderedDict()      # uid -> (lat, lon) of the placement last requested
-        self.pending = OrderedDict()   # tag -> (uid, placement) of a request the planner has not rejected
+        self.tags = {}                 # uid -> tag of that request: the only busy reply that may free the placement
+        self.pending = OrderedDict()   # tag -> uid of a request the planner has not rejected
         self.issued = 0
 
     def admit(self, marker):
@@ -163,10 +165,12 @@ class MarkerGate:
             self.sent[uid] = here
             self.sent.move_to_end(uid)
             while len(self.sent) > self.capacity:
-                self.sent.popitem(last=False)
+                self.tags.pop(self.sent.popitem(last=False)[0], None)
         tag = f'[req {self.issued}]'
         self.issued += 1
-        self.pending[tag] = (uid, here)
+        if uid:
+            self.tags[uid] = tag
+        self.pending[tag] = uid
         while len(self.pending) > self.unanswered:
             self.pending.popitem(last=False)
         return tag
@@ -174,21 +178,24 @@ class MarkerGate:
     def dropped(self, reply):
         """The uid whose placement the planner's busy reply gave up on, forgotten so the marker's next event
         passes again; None for any other reply, for a tag this gate did not issue (an operator's own request, or
-        one older than `unanswered` later ones) and for a uid that has moved to a newer placement since."""
+        one older than `unanswered` later ones) and for a tag that is no longer the uid's current request (the
+        marker moved since, or moved and came back: the spot is the same, the request is not)."""
         if not reply.startswith(BUSY_REPLY):
             return None
         tagged = REQUEST_TAG.match(reply.partition('dropped: ')[2])
         if tagged is None:
             return None
-        uid, here = self.pending.pop(tagged.group(0).rstrip(), (None, None))
-        if uid and self.sent.get(uid) == here:
+        uid = self.pending.pop(tagged.group(0).rstrip(), None)
+        if uid and self.tags.get(uid) == tagged.group(0).rstrip():
             del self.sent[uid]
+            del self.tags[uid]
             return uid
         return None
 
     def forget(self, uid):
         """The placement was not acted on (the planner was busy): the next event for this uid passes again."""
         self.sent.pop(uid, None)
+        self.tags.pop(uid, None)
 
 
 def course_from_quaternion(z, w):
