@@ -17,8 +17,7 @@ vcs import ws/src < ws/deps.repos   # 44 repos: foxglove_bridge 0.8.5, rosx_intr
 ./steps/06_ros_gz_build.sh          # ros_gz_bridge and ros_gz_sim with the gz vendors on top of Harmonic (GZ_VERSION=harmonic); apt libcli11-dev libgflags-dev libdart6.13-all-dev
 ./steps/09_ros2_control_build.sh    # gz_ros2_control, diff_drive_controller, joint_state_broadcaster; the other controllers get COLCON_IGNORE, tl-expected is built first; apt python3-typeguard python3-jinja2
 ./steps/15_foxglove_msgs.sh         # before 07: COLCON_IGNORE on the sdk checkout (its ros/src holds a second foxglove_bridge, and colcon stops on a duplicate name once a build selects it, as 07 does through corridor_sim), then foxglove_msgs out of ros/src/foxglove_msgs alone
-./steps/07_build_ours.sh            # xacro, foxglove_bridge and our packages except corridor_cot; pip anthropic brotli zstandard for the user
-cd ws && colcon build --symlink-install --packages-select corridor_cot --cmake-args -DBUILD_TESTING=OFF   # the one 07 leaves out
+./steps/07_build_ours.sh            # xacro, foxglove_bridge, corridor_msgs and all our packages; pip anthropic brotli zstandard for the user
 ```
 
 On a Thor with Jazzy from apt (`/opt/ros/jazzy`), ros_gz, gz_ros2_control, the controllers and foxglove_bridge come from apt as well (`ros-jazzy-*`; `foxglove_msgs` is `ros-jazzy-foxglove-msgs`); nothing is imported from `ws/deps.repos` and the seven `corridor_*` packages build alone: `cd ws && colcon build --symlink-install --cmake-args -DBUILD_TESTING=OFF`.
