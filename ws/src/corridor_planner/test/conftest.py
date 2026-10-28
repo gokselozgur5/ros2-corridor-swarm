@@ -63,6 +63,9 @@ if not _REAL_ROS:
     corridor_msg = types.ModuleType('corridor_msgs.msg')
     corridor_msg.GeofenceEvent = _msg('GeofenceEvent', header=Header, vehicle='', corridor_id='', type=0, distance_m=0.0, fix=sensor.NavSatFix)
     corridor_msg.GeofenceEvent.EXIT, corridor_msg.GeofenceEvent.ENTER, corridor_msg.GeofenceEvent.WARN = 0, 1, 2
+    corridor_msg.VehicleState = _msg('VehicleState', header=Header, name='', fix=sensor.NavSatFix, pose=Pose, velocity=Twist,
+                                     battery_pct=0.0, mode='', goal_id='', inside_corridor=False)
+    corridor_msg.FleetState = _msg('FleetState', header=Header, corridor_id='', vehicles=list)
     corridor_action = types.ModuleType('corridor_msgs.action')
     corridor_action.Patrol = type('Patrol', (), {
         'Goal': _msg('Patrol_Goal', vehicle='', corridor_id='', laps=0, speed_mps=0.0, clockwise=False),

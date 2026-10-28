@@ -20,6 +20,10 @@ def generate_launch_description():
         DeclareLaunchArgument('dry_run', default_value='false'),
         DeclareLaunchArgument('status_loop', default_value='false'),
         DeclareLaunchArgument('start_patrol', default_value='true'),   # false when the vehicle layer already runs one
+        DeclareLaunchArgument('fleet_state', default_value='true'),    # false when the vehicle layer already runs one (kinematic.launch.py)
+        Node(package='corridor_nav', executable='fleet_state', name='fleet_state',
+             condition=IfCondition(LaunchConfiguration('fleet_state')),
+             parameters=[{'corridor_geojson': corridor, 'vehicles': ['v1']}]),
         Node(package='corridor_nav', executable='patrol_server', namespace='v1', name='patrol_server',
              condition=IfCondition(LaunchConfiguration('start_patrol')),
              parameters=[{'corridor_geojson': corridor, 'vehicle': 'v1', 'inset_m': 30.0}]),
