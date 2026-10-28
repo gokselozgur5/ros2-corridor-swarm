@@ -37,7 +37,7 @@ Why these choices:
 
 ## Status
 
-Phase 1 closed: Gazebo world, live lidar/camera/imu/navsat, ros2_control diff_drive moving the UGV (#1-#5). Phase 2 closed on the kinematic sim: follower, geofence, patrol action, three vehicles (#6-#10). Phase 3: planner tools proven over the debug topic; the model path waits for ANTHROPIC_API_KEY in `.env` (#11-#14 open). Phase 4 groundwork: corridor_cot written and unit-tested, FreeTAKServer container being set up on Thor (#15 #16 open). See PLAN.md and the issues.
+Phase 1 closed: Gazebo world, live lidar/camera/imu/navsat, ros2_control diff_drive moving the UGV (#1-#5). Phase 2 closed on the kinematic sim: follower, geofence, patrol action, three vehicles (#6-#10). Phase 3 closed: planner tools proven over the debug topic and with the live model, Haiku status loop (#11-#14). Phase 4: cot_bridge streams the fleet to FreeTAKServer and turns ATAK markers into mission requests, proven server-side on Thor (`steps/13`, `14`); #15 and #16 stay open until a real ATAK client shows it. Phase 5 in progress: fleet_state (#20, ADR-0015), the pre-public fixes of the 2026-10-26 review and the fixes from Aether's independent review (#24-#28) are in; #17, #18, #21-#23 open. See PLAN.md and the issues.
 
 ## Local settings
 
