@@ -31,6 +31,7 @@ marked() {   # pids of this user's processes carrying our marker
   for pid in $(pgrep -u "$(id -u)"); do
     { tr '\0' '\n' < "/proc/$pid/environ"; } 2>/dev/null | grep -qx "CORRIDOR_DEMO=$SESSION" && echo "$pid"
   done
+  return 0   # set -e: a last pid without the marker must not make the caller's assignment fail
 }
 
 up() {
