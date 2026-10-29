@@ -90,7 +90,7 @@ def marker(args):
     time.sleep(0.5)   # registration first, the marker as the second message
     xml = event(f'marker-{uuid.uuid4().hex[:8]}', 'b-m-p-w', args.label, args.lat, args.lon, 'h-g-i-g-o')
     s.sendall(xml.encode())
-    time.sleep(1.0)
+    time.sleep(5.0)   # FTS relays a client's events while it is connected: closing within a second loses the marker
     s.close()
     print(f'marker "{args.label}" at {args.lat:.6f}, {args.lon:.6f} sent to {args.host}:{args.port}; '
           f'cot_bridge turns it into: send the nearest vehicle to marker "{args.label}" at {args.lat:.6f}, {args.lon:.6f}')
