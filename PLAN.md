@@ -87,4 +87,6 @@ Requirements are in `docs/requirements.md`; the ten `[GAP]` lines there are the 
 | 2026-10-29 | ADR-0015 `fleet_state` node, ADR-0016 geofence cancel at the mission layer (decide, then code with tests seen red) | nothing |
 | 2026-10-30 | ADR-0017 `goto` action, ADR-0018 launch per backend, #17 lifecycle nodes; `speed_mps` honoured (REQ-MISSION-18), `/clock` >= 50 Hz proof with three Gazebo vehicles (REQ-SIMULATION-19) | the two above |
 | 2026-10-30 | #15 #16 ATAK emulator on the Mac against FreeTAKServer, both directions live | ATAK emulator on the Mac |
-| 2026-10-31 | #18 demo video, README rewrite, status-loop cost in README (REQ-PLANNER-21), repo public | decision on the LAN IP in early history |
+| 2026-10-29 | #34 one-command demo stack (`steps/19_demo.sh up/check/patrol/down`), DEMO.md runbook rehearsed on .55, #35 `foxglove_port`, #37 sim-time stamps in `/fleet/state`; status-loop cost in README (REQ-PLANNER-21) | done 2026-10-29 |
+| 2026-10-30 | live demo from DEMO.md | #34 |
+| 2026-10-31 | #18 demo video, README rewrite, repo public | the LAN IP in early history stays (decided 2026-10-28) |
