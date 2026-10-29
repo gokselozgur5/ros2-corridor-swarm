@@ -360,7 +360,7 @@ Sources:
 
 Scope: Foxglove bridge and layout, launch arguments, `.env`/`env.sh` secrets, `steps/` proof scripts, tmux/logs. Read from the launch files, `env.sh`, `steps/lib.sh`, the proof scripts, `foxglove/corridor.json`, `cot_bridge.py`, `mission_planner.py`, `map_overlay.py` and the docs. Note: the repo was read only; nothing was edited or committed (the "atomic commits" reminder has nothing to apply to in this task).
 
-REQ-OPERATOROPS-01 (Ubiquitous). The `kinematic.launch.py`, `sim.launch.py` and `day1.launch.py` launch files shall start `foxglove_bridge` with `port: 8765`, `address: 0.0.0.0` and `send_buffer_limit: 100000000` (`kinematic.launch.py` lines 46-48, `sim.launch.py` lines 31-33, `day1.launch.py` lines 7-11).
+REQ-OPERATOROPS-01 (Ubiquitous). The `kinematic.launch.py`, `sim.launch.py` and `day1.launch.py` launch files shall start `foxglove_bridge` with `address: 0.0.0.0` and `send_buffer_limit: 100000000` on port 8765, which `kinematic.launch.py` and `sim.launch.py` take from the launch argument `foxglove_port` (another bridge may hold 8765 on a shared host, #35).
 Verified by: `steps/04_run.sh` line 31 (`ss -ltnp | grep 8765`, day1 only); kinematic/sim bridge start NOT VERIFIED by any script or test.
 
 REQ-OPERATOROPS-02 (Optional). Where the `foxglove` launch argument is `false` on `kinematic.launch.py` or `sim.launch.py`, the launch shall not start `foxglove_bridge` (`IfCondition(LaunchConfiguration('foxglove'))`, `kinematic.launch.py` lines 45-48, `sim.launch.py` lines 30-33).
