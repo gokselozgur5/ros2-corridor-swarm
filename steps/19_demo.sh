@@ -106,7 +106,8 @@ check() {
   done
   local unknown; unknown=$(grep -c "mode: unknown" <<<"$fleet" || true)
   [ "${unknown:-0}" -eq 0 ] || fail+=("$unknown vehicle(s) unknown in /fleet/state (stale fix)")
-  seen /map/overlay foxglove_msgs/msg/GeoJSON "FeatureCollection" 20   # echo truncates strings at 128 chars; the polygon is further in || fail+=("/map/overlay silent")
+  # echo truncates strings at 128 chars, the polygon is further in: match the GeoJSON head
+  seen /map/overlay foxglove_msgs/msg/GeoJSON "FeatureCollection" 20 || fail+=("/map/overlay silent")
   ss -ltn | grep -q ":$FOX_PORT " || fail+=("foxglove port $FOX_PORT not listening")
   if [ -f "$LOGDIR/cot.log" ]; then
     local connects; connects=$(grep -c "connected to TAK server" "$LOGDIR/cot.log" || true)
