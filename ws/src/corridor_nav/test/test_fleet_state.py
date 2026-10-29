@@ -157,3 +157,16 @@ def test_a_stale_fix_leaves_the_vehicle_listed_but_unknown(node_params):
 def test_timer_runs_at_period_s(node_params):
     node = make_node(node_params, period_s=0.25)
     assert [p for p, _ in node.timers] == [0.25]
+
+
+def test_vehicle_state_is_stamped_with_the_vehicles_own_fix_clock(node_params):
+    # A Gazebo vehicle runs on sim time while fleet_state runs on wall time; consumers age that vehicle's data
+    # (the planner's camera frame) against this stamp, so it must be the vehicle's clock, not the node's (#37).
+    node = make_node(node_params)
+    lat, lon = node.frame.to_latlon(20.0, 70.0)
+    fix = NavSatFix(latitude=lat, longitude=lon)
+    fix.header.stamp.sec, fix.header.stamp.nanosec = 100, 500
+    node.subscriptions['/v1/fix'](fix)
+    msg = last(node)
+    assert (msg.vehicles[0].header.stamp.sec, msg.vehicles[0].header.stamp.nanosec) == (100, 500)
+    assert msg.vehicles[1].mode == 'unknown'   # no fix: stamped by the node, nothing to age against
