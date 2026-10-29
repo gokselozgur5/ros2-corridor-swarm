@@ -18,6 +18,8 @@ def generate_launch_description():
     desc_share = get_package_share_directory('corridor_description')
     world = LaunchConfiguration('world')
     use_ros2_control = LaunchConfiguration('use_ros2_control')
+    autonomy = LaunchConfiguration('autonomy')
+    corridor = LaunchConfiguration('corridor')
     xacro_file = os.path.join(desc_share, 'urdf', 'ugv.urdf.xacro')
     description = ParameterValue(Command([
         FindExecutable(name='xacro'), ' ', xacro_file,
@@ -27,6 +29,9 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('world', default_value=os.path.join(gz_share, 'worlds', 'corridor.sdf')),
         DeclareLaunchArgument('use_ros2_control', default_value='false'),
+        DeclareLaunchArgument('autonomy', default_value='false'),   # follower + patrol server for v1 (needs use_ros2_control)
+        DeclareLaunchArgument('corridor', default_value=os.path.join(
+            get_package_share_directory('corridor_nav'), 'config', 'corridor_demo.geojson')),
         DeclareLaunchArgument('foxglove', default_value='true'),
         DeclareLaunchArgument('foxglove_port', default_value='8765'),
         Node(package='foxglove_bridge', executable='foxglove_bridge', name='foxglove_bridge',
@@ -48,4 +53,12 @@ def generate_launch_description():
                         '--controller-ros-args', '-r /v1/diff_drive/odom:=/v1/odom']),
         Node(package='corridor_nav', executable='twist_stamper', namespace='v1', name='twist_stamper',
              condition=IfCondition(use_ros2_control), parameters=[{'frame_id': 'v1/base_footprint', 'use_sim_time': True}]),
+        # autonomy:=true: v1's follower and patrol server under sim time, the values steps/12 proved the lap with
+        # (#19: position from fix, heading from imu). The fleet-wide nodes come from kinematic.launch.py fleet:=v1,...
+        Node(package='corridor_nav', executable='waypoint_follower', namespace='v1', name='waypoint_follower',
+             condition=IfCondition(autonomy),
+             parameters=[{'corridor_geojson': corridor, 'speed_mps': 3.0, 'lookahead_m': 4.0, 'arrive_tolerance_m': 2.0, 'use_sim_time': True}]),
+        Node(package='corridor_nav', executable='patrol_server', namespace='v1', name='patrol_server',
+             condition=IfCondition(autonomy),
+             parameters=[{'corridor_geojson': corridor, 'vehicle': 'v1', 'inset_m': 30.0, 'use_sim_time': True}]),
     ])
