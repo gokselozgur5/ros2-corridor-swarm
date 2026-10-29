@@ -43,7 +43,7 @@ wait_clock() {   # gz-transport discovery is a race under load: the bridge can m
 }
 
 seen() {   # topic, type, pattern, seconds: true once one message matches; --once drops out on a lost first message under load
-  timeout "$4" ros2 topic echo "$1" "$2" 2>/dev/null | grep -m1 -q "$3"
+  PYTHONUNBUFFERED=1 timeout "$4" ros2 topic echo "$1" "$2" 2>/dev/null | grep -m1 -q "$3"   # unbuffered: a pipe would hold the output until the kill| grep -m1 -q "$3"
 }
 
 clock_sec() { timeout 5 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock --field clock.sec 2>/dev/null | grep -m1 -E '^[0-9]+$' || echo 0; }
