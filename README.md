@@ -47,8 +47,8 @@ Hosts, users and keys are not in the repo. Copy `.env.example` to `.env` and fil
 
 | launch | package | arguments | what it starts |
 |---|---|---|---|
-| `kinematic.launch.py` | corridor_nav | `n` (vehicles, 1), `first` (1), `corridor` (GeoJSON path, also the follower's frame origin), `lookahead_m` (3.0), `speed_mps` (3.0), `foxglove` (true), `overlay` (true) | unicycle_sim, waypoint_follower, patrol_server per vehicle; one geofence_monitor, one fleet_state (`/fleet/state`), one map_overlay (corridor, routes and heading lines on `/map/overlay` and `/map/markers`) |
-| `sim.launch.py` | corridor_gz | `world` (corridor.sdf), `use_ros2_control` (false) | headless gz sim, v1 spawned from the xacro, ros_gz bridge, robot_state_publisher; with ros2_control: joint_state_broadcaster, diff_drive, twist_stamper |
+| `kinematic.launch.py` | corridor_nav | `n` (vehicles, 1), `first` (1), `corridor` (GeoJSON path, also the follower's frame origin), `lookahead_m` (3.0), `speed_mps` (3.0), `foxglove` (true), `foxglove_port` (8765), `overlay` (true) | unicycle_sim, waypoint_follower, patrol_server per vehicle; one geofence_monitor, one fleet_state (`/fleet/state`), one map_overlay (corridor, routes and heading lines on `/map/overlay` and `/map/markers`) |
+| `sim.launch.py` | corridor_gz | `world` (corridor.sdf), `use_ros2_control` (false), `foxglove` (true), `foxglove_port` (8765) | headless gz sim, v1 spawned from the xacro, ros_gz bridge, robot_state_publisher; with ros2_control: joint_state_broadcaster, diff_drive, twist_stamper |
 | `display.launch.py` | corridor_description | none | robot_state_publisher on the UGV xacro |
 | `mission.launch.py` | corridor_planner | `corridor`, `dry_run` (false), `status_loop` (false), `start_patrol` (true), `fleet_state` (true; false when the vehicle layer already runs one) | patrol_server and fleet_state for v1, mission_planner (Opus), optional status_loop (Haiku) |
 
@@ -56,4 +56,4 @@ Tools: `send_path` (one Path from `points:=[x,y,...]`), `clicked_goal` (`vehicle
 
 ## Foxglove
 
-Both launch files start `foxglove_bridge` on port 8765 (`foxglove:=false` to skip). On the Mac: Foxglove, Open connection, `ws://$THOR_HOST:8765`, then Layout, Import from file, `foxglove/corridor.json`: fleet map on the fixes, v1 3D view with lidar and camera, cross-track and speed plot, follower status, geofence events, a publish panel for `/mission/request` with the planner's reply and trace next to it.
+Both launch files start `foxglove_bridge` on port 8765 (`foxglove:=false` to skip, `foxglove_port:=8766` when another bridge holds 8765, as on a shared Thor). On the Mac: Foxglove, Open connection, `ws://$THOR_HOST:8765`, then Layout, Import from file, `foxglove/corridor.json`: fleet map on the fixes, v1 3D view with lidar and camera, cross-track and speed plot, follower status, geofence events, a publish panel for `/mission/request` with the planner's reply and trace next to it.
