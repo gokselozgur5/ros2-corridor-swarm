@@ -114,6 +114,9 @@ class FleetStateNode(Node):
         if not self.fix_is_fresh(v, now_ns):
             st.mode = 'unknown'
             return st
+        # The vehicle's own clock: a Gazebo vehicle stamps on sim time while this node runs on wall time, and
+        # consumers age that vehicle's other data (the planner's camera frame) against this stamp (#37).
+        st.header.stamp = v.fix.header.stamp
         st.fix = v.fix
         x, y = self.frame.to_xy(v.fix.latitude, v.fix.longitude)
         st.pose.position.x, st.pose.position.y = x, y
