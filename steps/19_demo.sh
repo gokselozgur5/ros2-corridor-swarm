@@ -42,6 +42,10 @@ wait_clock() {   # gz-transport discovery is a race under load: the bridge can m
   echo "warning: still no /clock; check will fail"
 }
 
+seen() {   # topic, type, pattern, seconds: true once one message matches; --once drops out on a lost first message under load
+  timeout "$4" ros2 topic echo "$1" "$2" 2>/dev/null | grep -m1 -q "$3"
+}
+
 clock_sec() { timeout 5 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock --field clock.sec 2>/dev/null | grep -m1 -E '^[0-9]+$' || echo 0; }
 
 marked() {   # pids of this user's processes carrying our marker
@@ -92,16 +96,16 @@ check() {
     grep -qx "$n" <<<"$nodes" || fail+=("node $n missing")
   done
   for v in v1 v2 v3; do
-    timeout 6 ros2 topic echo --once "/$v/fix" sensor_msgs/msg/NavSatFix 2>/dev/null | grep -q "^latitude:" || fail+=("$v/fix silent")
+    seen "/$v/fix" sensor_msgs/msg/NavSatFix "^latitude:" 10 || fail+=("$v/fix silent")
   done
-  local fleet; fleet=$(timeout 6 ros2 topic echo --once /fleet/state corridor_msgs/msg/FleetState 2>/dev/null || true)
+  local fleet; fleet=$(timeout 10 ros2 topic echo --once /fleet/state corridor_msgs/msg/FleetState 2>/dev/null || true)
   [ -n "$fleet" ] || fail+=("/fleet/state silent")
   for v in v1 v2 v3; do
     grep -q "name: $v" <<<"$fleet" || fail+=("$v not in /fleet/state")
   done
   local unknown; unknown=$(grep -c "mode: unknown" <<<"$fleet" || true)
   [ "${unknown:-0}" -eq 0 ] || fail+=("$unknown vehicle(s) unknown in /fleet/state (stale fix)")
-  timeout 20 ros2 topic echo --once /map/overlay foxglove_msgs/msg/GeoJSON 2>/dev/null | grep -q "Polygon" || fail+=("/map/overlay silent")
+  seen /map/overlay foxglove_msgs/msg/GeoJSON "Polygon" 20 || fail+=("/map/overlay silent")
   ss -ltn | grep -q ":$FOX_PORT " || fail+=("foxglove port $FOX_PORT not listening")
   if [ -f "$LOGDIR/cot.log" ]; then
     local connects; connects=$(grep -c "connected to TAK server" "$LOGDIR/cot.log" || true)
@@ -112,7 +116,7 @@ check() {
     local c1 c2
     c1=$(clock_sec); sleep 2; c2=$(clock_sec)
     [ "${c2:-0}" -gt "${c1:-0}" ] || fail+=("/clock not advancing ($c1 -> $c2)")
-    timeout 6 ros2 topic echo --once /v1/odom nav_msgs/msg/Odometry 2>/dev/null | grep -q "^header:" || fail+=("v1/odom silent (ros2_control)")
+    seen /v1/odom nav_msgs/msg/Odometry "^header:" 10 || fail+=("v1/odom silent (ros2_control)")
   fi
   grep -q "mission planner:" "$LOGDIR/mission.log" 2>/dev/null || fail+=("planner did not announce itself")
   if [ ${#fail[@]} -eq 0 ]; then echo "DEMO CHECK PASS"; else printf '  - %s\n' "${fail[@]}"; echo "DEMO CHECK FAIL"; exit 1; fi
