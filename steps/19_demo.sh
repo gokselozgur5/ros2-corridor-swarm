@@ -26,6 +26,24 @@ window() {   # name, command
   tmux send-keys -t "$SESSION:$name" "export CORRIDOR_DEMO=$SESSION ROS_DOMAIN_ID=$ROS_DOMAIN_ID GZ_PARTITION=$GZ_PARTITION ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST; source ./env.sh; $run 2>&1 | tee $LOGDIR/$name.log" Enter
 }
 
+wait_clock() {   # gz-transport discovery is a race under load: the bridge can miss /clock for a minute, or for good
+  local i
+  for i in $(seq 1 18); do
+    sleep 5
+    [ "$(clock_sec)" -gt 0 ] && { echo "sim clock after $((i * 5)) s"; return 0; }
+  done
+  echo "warning: no /clock after 90 s; restarting the gz window once"
+  tmux send-keys -t "$SESSION:gz" C-c; sleep 5; tmux kill-window -t "$SESSION:gz" 2>/dev/null || true
+  window gz "ros2 launch corridor_gz sim.launch.py use_ros2_control:=true autonomy:=true foxglove:=false"
+  for i in $(seq 1 18); do
+    sleep 5
+    [ "$(clock_sec)" -gt 0 ] && { echo "sim clock after restart, $((i * 5)) s"; return 0; }
+  done
+  echo "warning: still no /clock; check will fail"
+}
+
+clock_sec() { timeout 5 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock --field clock.sec 2>/dev/null | grep -m1 -E '^[0-9]+$' || echo 0; }
+
 marked() {   # pids of this user's processes carrying our marker
   local pid
   for pid in $(pgrep -u "$(id -u)"); do
@@ -44,7 +62,7 @@ up() {
   tmux new-session -d -s "$SESSION" -n work -c "$PWD"
   if [ "$mode" = mixed ]; then
     window gz "ros2 launch corridor_gz sim.launch.py use_ros2_control:=true autonomy:=true foxglove:=false"
-    sleep 15   # the model, the controllers and the bridge are up before the fleet nodes start listening
+    wait_clock   # the controllers, v1's follower and patrol server run on sim time; nothing moves before /clock flows
     window kin "ros2 launch corridor_nav kinematic.launch.py first:=2 n:=2 fleet:=$FLEET foxglove_port:=$FOX_PORT"
   else
     window kin "ros2 launch corridor_nav kinematic.launch.py n:=3 foxglove_port:=$FOX_PORT"
@@ -83,7 +101,7 @@ check() {
   done
   local unknown; unknown=$(grep -c "mode: unknown" <<<"$fleet" || true)
   [ "${unknown:-0}" -eq 0 ] || fail+=("$unknown vehicle(s) unknown in /fleet/state (stale fix)")
-  timeout 8 ros2 topic echo --once /map/overlay foxglove_msgs/msg/GeoJSON 2>/dev/null | grep -q "Polygon" || fail+=("/map/overlay silent")
+  timeout 20 ros2 topic echo --once /map/overlay foxglove_msgs/msg/GeoJSON 2>/dev/null | grep -q "Polygon" || fail+=("/map/overlay silent")
   ss -ltn | grep -q ":$FOX_PORT " || fail+=("foxglove port $FOX_PORT not listening")
   if [ -f "$LOGDIR/cot.log" ]; then
     local connects; connects=$(grep -c "connected to TAK server" "$LOGDIR/cot.log" || true)
@@ -92,9 +110,7 @@ check() {
   else fail+=("no cot log"); fi
   if [ "$mode" = mixed ]; then
     local c1 c2
-    c1=$(timeout 5 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock --field clock.sec 2>/dev/null | grep -m1 -E '^[0-9]+$' || echo 0)
-    sleep 2
-    c2=$(timeout 5 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock --field clock.sec 2>/dev/null | grep -m1 -E '^[0-9]+$' || echo 0)
+    c1=$(clock_sec); sleep 2; c2=$(clock_sec)
     [ "${c2:-0}" -gt "${c1:-0}" ] || fail+=("/clock not advancing ($c1 -> $c2)")
     timeout 6 ros2 topic echo --once /v1/odom nav_msgs/msg/Odometry 2>/dev/null | grep -q "^header:" || fail+=("v1/odom silent (ros2_control)")
   fi
