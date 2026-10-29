@@ -9,6 +9,7 @@ from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def launch_setup(context):
@@ -50,9 +51,10 @@ def generate_launch_description():
         DeclareLaunchArgument('lookahead_m', default_value='3.0'),
         DeclareLaunchArgument('speed_mps', default_value='3.0'),
         DeclareLaunchArgument('foxglove', default_value='true'),
+        DeclareLaunchArgument('foxglove_port', default_value='8765'),   # another bridge may hold 8765 on a shared host
         DeclareLaunchArgument('overlay', default_value='true'),   # map_overlay needs foxglove_msgs (apt ros-jazzy-foxglove-msgs or steps/15)
         Node(package='foxglove_bridge', executable='foxglove_bridge', name='foxglove_bridge',
              condition=IfCondition(LaunchConfiguration('foxglove')),
-             parameters=[{'port': 8765, 'address': '0.0.0.0', 'send_buffer_limit': 100000000}]),
+             parameters=[{'port': ParameterValue(LaunchConfiguration('foxglove_port'), value_type=int), 'address': '0.0.0.0', 'send_buffer_limit': 100000000}]),
         OpaqueFunction(function=launch_setup),
     ])
