@@ -21,6 +21,9 @@ def launch_setup(context):
     speed = float(LaunchConfiguration('speed_mps').perform(context))
     overlay = LaunchConfiguration('overlay').perform(context).lower() == 'true'
     names = [f'v{i}' for i in range(first, first + n)]
+    # The fleet-wide nodes (geofence monitor, fleet_state, overlay) cover `fleet` when given: the unicycles here plus
+    # vehicles another launch drives, e.g. a Gazebo v1 next to kinematic v2, v3 (fleet:=v1,v2,v3).
+    fleet = [v for v in LaunchConfiguration('fleet').perform(context).split(',') if v] or names
     nodes = []
     for i, v in enumerate(names):
         nodes += [
@@ -30,16 +33,21 @@ def launch_setup(context):
             Node(package='corridor_nav', executable='waypoint_follower', namespace=v, name='waypoint_follower',
                  parameters=[{'speed_mps': speed, 'lookahead_m': lookahead, 'arrive_tolerance_m': 1.5, 'corridor_geojson': corridor}]),
             Node(package='corridor_nav', executable='patrol_server', namespace=v, name='patrol_server',
-                 parameters=[{'corridor_geojson': corridor, 'vehicle': v, 'inset_m': 30.0 + 8.0 * i}]),
+                 parameters=[{'corridor_geojson': corridor, 'vehicle': v, 'inset_m': inset_m(v)}]),
         ]
     nodes.append(Node(package='corridor_nav', executable='geofence_monitor', name='geofence_monitor',
-                      parameters=[{'corridor_geojson': corridor, 'vehicles': names, 'warn_margin_m': 15.0}]))
+                      parameters=[{'corridor_geojson': corridor, 'vehicles': fleet, 'warn_margin_m': 15.0}]))
     nodes.append(Node(package='corridor_nav', executable='fleet_state', name='fleet_state',
-                      parameters=[{'corridor_geojson': corridor, 'vehicles': names}]))
-    if overlay:   # the routes it draws are the patrol servers' insets, 30 m plus 8 m per vehicle
+                      parameters=[{'corridor_geojson': corridor, 'vehicles': fleet}]))
+    if overlay:   # the routes it draws are the patrol servers' insets, 30 m plus 8 m per vehicle number
         nodes.append(Node(package='corridor_nav', executable='map_overlay', name='map_overlay',
-                          parameters=[{'corridor_geojson': corridor, 'vehicles': names, 'insets_m': [30.0 + 8.0 * i for i in range(len(names))]}]))
+                          parameters=[{'corridor_geojson': corridor, 'vehicles': fleet, 'insets_m': [inset_m(v) for v in fleet]}]))
     return nodes
+
+
+def inset_m(vehicle):
+    """Patrol inset by vehicle number, the same for every launch that drives vN: v1 30 m, v2 38 m, v3 46 m."""
+    return 30.0 + 8.0 * (int(vehicle[1:]) - 1)
 
 
 def generate_launch_description():
@@ -48,6 +56,7 @@ def generate_launch_description():
         DeclareLaunchArgument('corridor', default_value=os.path.join(share, 'config', 'corridor_demo.geojson')),
         DeclareLaunchArgument('n', default_value='1'),
         DeclareLaunchArgument('first', default_value='1'),   # first vehicle number, e.g. first:=2 n:=2 beside a Gazebo v1
+        DeclareLaunchArgument('fleet', default_value=''),    # all vehicles the fleet-wide nodes cover, e.g. fleet:=v1,v2,v3; empty: the ones here
         DeclareLaunchArgument('lookahead_m', default_value='3.0'),
         DeclareLaunchArgument('speed_mps', default_value='3.0'),
         DeclareLaunchArgument('foxglove', default_value='true'),
