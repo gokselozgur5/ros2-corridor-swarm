@@ -62,7 +62,12 @@ check() {
   for w in kin mission cot $([ "$mode" = mixed ] && echo gz); do
     tmux list-windows -t "$SESSION" -F '#W' | grep -qx "$w" || fail+=("window $w gone")
   done
-  local nodes; nodes=$(timeout 10 ros2 node list 2>/dev/null || true)
+  local nodes i   # discovery takes a few seconds after up; the planner window is the last to come up
+  for i in 1 2 3 4 5 6; do
+    nodes=$(timeout 10 ros2 node list 2>/dev/null || true)
+    grep -qx /status_loop <<<"$nodes" && grep -qx /cot_bridge <<<"$nodes" && break
+    sleep 5
+  done
   for n in /fleet_state /geofence_monitor /map_overlay /mission_planner /status_loop /cot_bridge /foxglove_bridge \
            /v1/patrol_server /v2/patrol_server /v3/patrol_server /v1/waypoint_follower /v2/waypoint_follower /v3/waypoint_follower; do
     grep -qx "$n" <<<"$nodes" || fail+=("node $n missing")
@@ -86,9 +91,9 @@ check() {
   else fail+=("no cot log"); fi
   if [ "$mode" = mixed ]; then
     local c1 c2
-    c1=$(timeout 5 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock --field clock.sec 2>/dev/null || echo 0)
+    c1=$(timeout 5 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock --field clock.sec 2>/dev/null | grep -m1 -E '^[0-9]+$' || echo 0)
     sleep 2
-    c2=$(timeout 5 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock --field clock.sec 2>/dev/null || echo 0)
+    c2=$(timeout 5 ros2 topic echo --once /clock rosgraph_msgs/msg/Clock --field clock.sec 2>/dev/null | grep -m1 -E '^[0-9]+$' || echo 0)
     [ "${c2:-0}" -gt "${c1:-0}" ] || fail+=("/clock not advancing ($c1 -> $c2)")
     timeout 6 ros2 topic echo --once /v1/odom nav_msgs/msg/Odometry 2>/dev/null | grep -q "^header:" || fail+=("v1/odom silent (ros2_control)")
   fi
